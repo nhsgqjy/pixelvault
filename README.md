@@ -1,5 +1,7 @@
 # PixelVault
 
+English | [简体中文](README.zh-CN.md)
+
 Self-hosted personal photo vault built with React, TypeScript, FastAPI and SQLite.
 
 ![PixelVault desktop library](docs/portfolio/assets/pixelvault-desktop.png)

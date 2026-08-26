@@ -12,8 +12,9 @@ PRIVATE_DOCS = {
     ROOT / "docs/portfolio/resume-copy.md",
     ROOT / "docs/portfolio/PUBLISHING.md",
 }
-FILES = [ROOT / "README.md", *(path for path in sorted((ROOT / "docs").rglob("*.md"))
-                                if path not in PRIVATE_DOCS)]
+FILES = [*sorted(ROOT.glob("README*.md")),
+         *(path for path in sorted((ROOT / "docs").rglob("*.md"))
+           if path not in PRIVATE_DOCS)]
 LINK = re.compile(r"\[[^]]+\]\(([^)]+)\)")
 
 

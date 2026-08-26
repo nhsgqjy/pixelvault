@@ -27,6 +27,7 @@ PRIVATE_MARKERS = (
 )
 REQUIRED_PUBLIC_FILES = (
     "README.md",
+    "README.zh-CN.md",
     ".env.example",
     "Dockerfile",
     "docker-compose.yml",
