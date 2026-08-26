@@ -28,6 +28,44 @@ Open `http://localhost:8080`. A healthy service reports `{"status":"ok"}` at `ht
 
 The Compose file deliberately refuses to start when `PIXELVAULT_PASSWORD` is missing. The application also refuses production startup when the password remains `demo1234`.
 
+## Render web service
+
+The repository includes `render.yaml` for a reproducible Render Blueprint and
+also supports manual Web Service creation from the Render dashboard. Connect
+`nhsgqjy/pixelvault`, select the `main` branch and use these values:
+
+| Setting | Value |
+| --- | --- |
+| Language | `Docker` |
+| Region | `Singapore` |
+| Root directory | blank |
+| Docker build context | `.` |
+| Dockerfile path | `./Dockerfile` |
+| Docker command | blank |
+| Health check path | `/api/health` |
+| Auto-deploy | On commit |
+
+Set the following environment variables in the Render dashboard. Never commit
+the password value or place it in `render.yaml`:
+
+| Variable | Value |
+| --- | --- |
+| `PIXELVAULT_DEMO_PASSWORD` | a long unique secret, entered only in Render |
+| `PIXELVAULT_COOKIE_SECURE` | `true` |
+| `PIXELVAULT_ENV` | `production` |
+| `DATA_DIR` | `/app/data` |
+
+Render supplies `PORT` at runtime. The container uses that value automatically
+and falls back to port 8000 for local Compose deployments. Render terminates
+public TLS and forwards requests to this container, so secure cookies must stay
+enabled.
+
+The Free web-service filesystem is ephemeral. It is suitable for validating the
+public HTTPS deployment, but uploaded photos and SQLite state can disappear on a
+restart or redeploy. Do not treat it as durable storage. A paid Render service
+can attach a persistent disk at `/app/data`; the longer-term multi-client design
+will instead move metadata to PostgreSQL and media to object storage.
+
 ## LAN and HTTPS
 
 The published port is available to the host network. To use a phone on the same trusted Wi-Fi, open `http://<computer-LAN-IP>:8080` and allow TCP 8080 through the host firewall only for the private network profile.

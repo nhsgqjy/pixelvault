@@ -52,6 +52,7 @@ def main() -> None:
             "PIXELVAULT_COOKIE_SECURE": "false",
             "PIXELVAULT_STATIC_DIR": str(STATIC),
             "DATA_DIR": data_dir,
+            "PORT": str(port),
         })
         command = [sys.executable, "-m", "uvicorn", "app.main:app", "--host", "127.0.0.1",
                    "--port", str(port), "--proxy-headers", "--forwarded-allow-ips=*"]
@@ -60,6 +61,8 @@ def main() -> None:
         try:
             base = f"http://127.0.0.1:{port}"
             wait_for_server(base + "/api/health", process)
+            subprocess.run([sys.executable, "-m", "app.healthcheck"], cwd=BACKEND,
+                           env=environment, check=True, timeout=5)
             with urlopen(base + "/", timeout=3) as response:
                 assert response.status == 200 and b'<div id="root">' in response.read()
             with urlopen(base + "/album-share/client-route", timeout=3) as response:

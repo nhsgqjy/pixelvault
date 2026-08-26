@@ -31,6 +31,7 @@ REQUIRED_PUBLIC_FILES = (
     ".env.example",
     "Dockerfile",
     "docker-compose.yml",
+    "render.yaml",
     "docs/portfolio/README.md",
     "docs/portfolio/evidence-index.md",
     "docs/portfolio/assets/pixelvault-desktop.png",

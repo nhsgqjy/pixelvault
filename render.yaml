@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: pixelvault
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: PIXELVAULT_DEMO_PASSWORD
+        sync: false
+      - key: PIXELVAULT_COOKIE_SECURE
+        value: "true"
+      - key: PIXELVAULT_ENV
+        value: production
+      - key: DATA_DIR
+        value: /app/data

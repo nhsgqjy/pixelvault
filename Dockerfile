@@ -11,7 +11,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIXELVAULT_ENV=production \
     PIXELVAULT_STATIC_DIR=/app/frontend \
-    DATA_DIR=/app/data
+    DATA_DIR=/app/data \
+    PORT=8000
 WORKDIR /app
 RUN useradd --create-home --uid 10001 pixelvault
 COPY backend/requirements.txt ./requirements.txt
@@ -22,5 +23,5 @@ RUN mkdir -p /app/data && chown -R pixelvault:pixelvault /app
 USER pixelvault
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*"]
+  CMD ["python", "-m", "app.healthcheck"]
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port \"${PORT:-8000}\" --proxy-headers --forwarded-allow-ips='*'"]
