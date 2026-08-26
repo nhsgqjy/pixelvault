@@ -1,0 +1,110 @@
+{
+  "generated_at": "2026-08-25T10:02:02.621404+00:00",
+  "base_url": "http://127.0.0.1:8000",
+  "library_photo_count": 4,
+  "scale": 0.2,
+  "scenarios": [
+    {
+      "name": "photos_list",
+      "concurrency": 20,
+      "requests": 60,
+      "duration_seconds": 11.442,
+      "requests_per_second": 5.24,
+      "mean_ms": 3144.08,
+      "p50_ms": 3617.42,
+      "p95_ms": 4156.88,
+      "p99_ms": 4535.49,
+      "max_ms": 4535.49,
+      "errors": 0,
+      "error_rate_percent": 0.0,
+      "statuses": {
+        "200": 60
+      }
+    },
+    {
+      "name": "albums_list",
+      "concurrency": 20,
+      "requests": 60,
+      "duration_seconds": 11.805,
+      "requests_per_second": 5.08,
+      "mean_ms": 3202.97,
+      "p50_ms": 3609.12,
+      "p95_ms": 4606.23,
+      "p99_ms": 6281.27,
+      "max_ms": 6281.27,
+      "errors": 0,
+      "error_rate_percent": 0.0,
+      "statuses": {
+        "200": 60
+      }
+    },
+    {
+      "name": "stats",
+      "concurrency": 10,
+      "requests": 30,
+      "duration_seconds": 7.093,
+      "requests_per_second": 4.23,
+      "mean_ms": 2083.09,
+      "p50_ms": 1979.07,
+      "p95_ms": 3859.41,
+      "p99_ms": 4089.83,
+      "max_ms": 4089.83,
+      "errors": 0,
+      "error_rate_percent": 0.0,
+      "statuses": {
+        "200": 30
+      }
+    },
+    {
+      "name": "thumbnail",
+      "concurrency": 20,
+      "requests": 50,
+      "duration_seconds": 10.124,
+      "requests_per_second": 4.94,
+      "mean_ms": 3540.47,
+      "p50_ms": 3823.81,
+      "p95_ms": 4892.38,
+      "p99_ms": 4988.97,
+      "max_ms": 4988.97,
+      "errors": 0,
+      "error_rate_percent": 0.0,
+      "statuses": {
+        "200": 50
+      }
+    },
+    {
+      "name": "mixed_read",
+      "concurrency": 30,
+      "requests": 100,
+      "duration_seconds": 21.833,
+      "requests_per_second": 4.58,
+      "mean_ms": 5605.53,
+      "p50_ms": 5616.21,
+      "p95_ms": 8149.9,
+      "p99_ms": 10231.31,
+      "max_ms": 11584.03,
+      "errors": 0,
+      "error_rate_percent": 0.0,
+      "statuses": {
+        "200": 100
+      }
+    },
+    {
+      "name": "upload_init",
+      "concurrency": 10,
+      "requests": 12,
+      "duration_seconds": 3.421,
+      "requests_per_second": 3.51,
+      "mean_ms": 1952.91,
+      "p50_ms": 2055.41,
+      "p95_ms": 3199.89,
+      "p99_ms": 3199.89,
+      "max_ms": 3199.89,
+      "errors": 0,
+      "error_rate_percent": 0.0,
+      "statuses": {
+        "200": 12
+      }
+    }
+  ]
+}

@@ -1,0 +1,8 @@
+import {CloudUpload, Download, Pencil, Plus, Share2, Trash2} from 'lucide-react';
+import type {Album, View} from '../../types';
+
+type Props = {view: View; label: string; activeAlbum: Album | null; onFiles: (files: FileList | null) => void; onCreateAlbum: () => void; onShareAlbum: (album: Album) => void; onRevokeAlbum: (album: Album) => void; onDescribeAlbum: (album: Album) => void; onExportAlbum: (album: Album) => void; onRenameAlbum: (album: Album) => void; onDeleteAlbum: (album: Album) => void};
+
+export function VaultHeader(props: Props) {
+  return <header><div><p>YOUR PRIVATE LIBRARY</p><h1>{props.label}</h1></div>{props.view === 'albums' ? props.activeAlbum ? <div className="album-tools"><button onClick={() => props.onShareAlbum(props.activeAlbum!)}><Share2/>{props.activeAlbum.share_token ? 'Copy link' : 'Share'}</button>{props.activeAlbum.share_token && <button className="danger" onClick={() => props.onRevokeAlbum(props.activeAlbum!)}>Revoke</button>}<button onClick={() => props.onDescribeAlbum(props.activeAlbum!)}><Pencil/>Description</button><button onClick={() => props.onExportAlbum(props.activeAlbum!)}><Download/>Export</button><button onClick={() => props.onRenameAlbum(props.activeAlbum!)}><Pencil/>Rename</button><button className="danger" onClick={() => props.onDeleteAlbum(props.activeAlbum!)}><Trash2/>Delete album</button></div> : <button className="upload" onClick={props.onCreateAlbum}><Plus/>New album</button> : props.view !== 'insights' && props.view !== 'duplicates' && <label className="upload"><CloudUpload/>Upload photos<input type="file" multiple accept="image/*" onChange={event => props.onFiles(event.target.files)}/></label>}</header>;
+}

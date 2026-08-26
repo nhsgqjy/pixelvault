@@ -1,0 +1,11 @@
+.mobile-nav{display:none}
+:where(button,input,textarea,select):focus-visible{outline:3px solid #e2a63b;outline-offset:2px}
+@media(max-width:760px){
+ main{padding-bottom:108px}
+ .mobile-nav{position:fixed;z-index:18;display:grid;grid-template-columns:repeat(6,1fr);left:10px;right:10px;bottom:10px;margin:0;padding:7px;background:#173c35eF;border:1px solid #ffffff18;border-radius:18px;box-shadow:0 15px 45px #102b2655;backdrop-filter:blur(14px)}
+ .mobile-nav button{min-width:0;min-height:52px;border:0;background:transparent;color:#b8ccc6;border-radius:12px;padding:6px 2px;display:grid;place-items:center;gap:2px;font:600 9px inherit;cursor:pointer}
+ .mobile-nav button.active{background:#2b5b50;color:white}.mobile-nav svg{width:18px;height:18px}.mobile-nav span{overflow:hidden;text-overflow:ellipsis;max-width:100%}
+ .toolbar{flex-wrap:wrap;gap:12px}.toolbar .search{order:3}.toolbar>span{margin-left:auto}
+ .upload{min-height:46px}.actions button,.picker{min-width:36px;min-height:36px}
+ .toast{position:fixed;top:14px;left:18px;right:18px;text-align:center}
+}

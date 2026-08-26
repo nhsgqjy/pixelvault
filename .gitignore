@@ -1,0 +1,13 @@
+.env
+backend/data/
+frontend/dist/
+frontend/node_modules/
+frontend/tsconfig.tsbuildinfo
+**/__pycache__/
+*.pyc
+docs/portfolio/assets/pixelvault-library.png
+
+# Local job-search notes: useful to the author, not part of the public project.
+docs/portfolio/interview-guide.md
+docs/portfolio/resume-copy.md
+docs/portfolio/PUBLISHING.md

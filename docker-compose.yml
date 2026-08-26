@@ -1,0 +1,29 @@
+services:
+  pixelvault:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      PIXELVAULT_ENV: production
+      PIXELVAULT_DEMO_PASSWORD: ${PIXELVAULT_PASSWORD:?Set PIXELVAULT_PASSWORD in .env}
+      PIXELVAULT_COOKIE_SECURE: ${PIXELVAULT_COOKIE_SECURE:-false}
+      PIXELVAULT_STATIC_DIR: /app/frontend
+      DATA_DIR: /app/data
+    ports:
+      - "${PIXELVAULT_PORT:-8080}:8000"
+    volumes:
+      - pixelvault-data:/app/data
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  pixelvault-data:
