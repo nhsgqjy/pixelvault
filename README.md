@@ -4,11 +4,6 @@ Self-hosted personal photo vault built with React, TypeScript, FastAPI and SQLit
 
 ![PixelVault desktop library](docs/portfolio/assets/pixelvault-desktop.png)
 
-<p align="center">
-  <img src="docs/portfolio/assets/pixelvault-albums.png" alt="PixelVault albums" width="47%" />
-  <img src="docs/portfolio/assets/pixelvault-mobile.png" alt="PixelVault mobile library" width="47%" />
-</p>
-
 ## Features
 
 - Resumable concurrent photo uploads with automatic retry
