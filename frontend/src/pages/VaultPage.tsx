@@ -1,6 +1,6 @@
 import React,{useEffect,useState} from 'react';
 import {CalendarDays,CloudUpload,Download,FolderOpen,Images,Pencil,Plus,Search,Share2,SlidersHorizontal,Trash2,X} from 'lucide-react';
-import {API} from '../lib/api';
+import {api} from '../lib/api';
 import {bytes} from '../lib/format';
 import type {Album,ApiEvent as Event,DeleteIntent,Photo,Security,Stats,TimelineGroup,View} from '../types';
 import {BackupPanel} from '../components/BackupPanel';
@@ -29,7 +29,7 @@ export function VaultPage({onLogout}:{onLogout:()=>void}){
  const libraryEnabled=view!=='insights'&&view!=='duplicates'&&!(view==='timeline'&&!activeMonth)&&!(view==='albums'&&!activeAlbum);
  const{photos,setPhotos,nextCursor,total,load,loadMore}=usePhotoLibrary({enabled:libraryEnabled,view,search,albumId:activeAlbum?.id,month:activeMonth||undefined,dateFrom,dateTo,minSize,orientation,sort});
  const{progress,uploadState,speeds,accept,toggleUpload}=useChunkedUpload(()=>load());
- useEffect(()=>{if(view==='insights'){fetch(`${API}/stats`).then(response=>response.json()).then(setStats);fetch(`${API}/events`).then(response=>response.json()).then(payload=>setEvents(payload.items));fetch(`${API}/security`).then(response=>response.json()).then(setSecurity)}else if(view==='timeline'&&!activeMonth){fetch(`${API}/timeline`).then(response=>response.json()).then(payload=>setTimeline(payload.items))}},[view,activeMonth]);
+ useEffect(()=>{if(view==='insights'){api.get<Stats>('/stats').then(setStats);api.get<{items:Event[]}>('/events').then(payload=>setEvents(payload.items));api.get<Security>('/security').then(setSecurity)}else if(view==='timeline'&&!activeMonth){api.get<{items:TimelineGroup[]}>('/timeline').then(payload=>setTimeline(payload.items))}},[view,activeMonth]);
  const movePhoto=(step:number)=>setSelected(current=>{if(!current||!photos.length)return current;const index=photos.findIndex(photo=>photo.id===current.id);return photos[(index+step+photos.length)%photos.length]});
  useEffect(()=>{if(!selected)return;const key=(event:KeyboardEvent)=>{if(event.key==='Escape'){setSelected(null);setPlaying(false)}if(event.key==='ArrowLeft')movePhoto(-1);if(event.key==='ArrowRight')movePhoto(1)};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key)},[selected,photos]);
  useEffect(()=>{if(!confirming)return;const key=(event:KeyboardEvent)=>{if(event.key==='Escape')setConfirming(null)};window.addEventListener('keydown',key);return()=>window.removeEventListener('keydown',key)},[confirming]);
@@ -38,7 +38,7 @@ export function VaultPage({onLogout}:{onLogout:()=>void}){
  const toggle=(id:string)=>setChecked(current=>current.includes(id)?current.filter(value=>value!==id):[...current,id]);
  const monthLabel=(month:string)=>month==='unknown'?'Unknown date':new Date(`${month}-01T00:00:00`).toLocaleDateString(undefined,{month:'long',year:'numeric'});const labels:Record<View,string>={photos:'All photos',favorites:'Favorites',shared:'Shared links',trash:'Trash',albums:activeAlbum?.name||'Albums',timeline:activeMonth?monthLabel(activeMonth):'Timeline',duplicates:'Similar photos',insights:'Performance'};
  const switchView=(key:View)=>{setView(key);setActiveAlbum(null);setActiveMonth(null);setChecked([])};
- const lockVault=async()=>{await fetch(`${API}/auth/logout`,{method:'POST'});onLogout()};
+ const lockVault=async()=>{await api.post('/auth/logout');onLogout()};
  return <div className="app"><Sidebar view={view} onSwitch={switchView} onLogout={lockVault}/><main>{confirming&&<DeleteDialog intent={confirming} onCancel={()=>setConfirming(null)} onConfirm={async()=>{const intent=confirming;setConfirming(null);await performAction(intent.id,intent.kind);if(intent.kind==='trash'&&activeAlbum)setActiveAlbum(current=>current?{...current,photo_count:Math.max(0,current.photo_count-1)}:current);await loadAlbums()}}/>}
  {notice&&<div className="toast" onClick={()=>setNotice('')}>{notice}</div>}{selected&&<PhotoDetail photo={selected} photoCount={photos.length} playing={playing} onClose={()=>{setSelected(null);setPlaying(false)}} onMove={movePhoto} onTogglePlay={()=>setPlaying(value=>!value)} onSaved={updated=>{setSelected(updated);setPhotos(items=>items.map(item=>item.id===updated.id?updated:item));setNotice('Photo details saved')}}/>}
  <VaultHeader view={view} label={labels[view]} activeAlbum={activeAlbum} onFiles={accept} onCreateAlbum={createNewAlbum} onShareAlbum={shareAlbum} onRevokeAlbum={revokeAlbumShare} onDescribeAlbum={editAlbumDescription} onExportAlbum={exportAlbum} onRenameAlbum={renameCurrent} onDeleteAlbum={deleteCurrent}/>

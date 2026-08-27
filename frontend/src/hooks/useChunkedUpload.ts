@@ -1,5 +1,5 @@
 import {useRef, useState} from 'react';
-import {API} from '../lib/api';
+import {api} from '../lib/api';
 import {sha256} from '../lib/format';
 
 export type UploadStatus = 'uploading' | 'paused' | 'retrying' | 'complete' | 'deduplicated' | 'failed';
@@ -17,7 +17,7 @@ export function useChunkedUpload(onComplete: () => void | Promise<void>) {
     setProgress(current => ({...current, [file.name]: 2}));
     setUploadState(current => ({...current, [file.name]: 'uploading'}));
     try {
-      const init = await fetch(`${API}/uploads/init?filename=${encodeURIComponent(file.name)}&sha256=${hash}&size=${file.size}&content_type=${encodeURIComponent(file.type)}`, {method: 'POST'}).then(response => response.json());
+      const init = await api.post<{instant: boolean; upload_id: string; chunk_size: number; uploaded_chunks?: number[]}>('/uploads/init', {query: {filename: file.name, sha256: hash, size: file.size, content_type: file.type}});
       if (init.instant) {
         setProgress(current => ({...current, [file.name]: 100}));
         setUploadState(current => ({...current, [file.name]: 'deduplicated'}));
@@ -41,7 +41,7 @@ export function useChunkedUpload(onComplete: () => void | Promise<void>) {
           form.append('chunk', file.slice(index * chunkSize, Math.min((index + 1) * chunkSize, file.size)));
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              const response = await fetch(`${API}/uploads/${init.upload_id}/chunks/${index}`, {method: 'PUT', body: form});
+              const response = await api.raw(`/uploads/${init.upload_id}/chunks/${index}`, {method: 'PUT', body: form});
               if (!response.ok) throw new Error(`Chunk ${index} failed`);
               break;
             } catch (error) {
@@ -62,7 +62,7 @@ export function useChunkedUpload(onComplete: () => void | Promise<void>) {
       form.append('filename', file.name);
       form.append('sha256', hash);
       form.append('content_type', file.type || 'application/octet-stream');
-      const response = await fetch(`${API}/uploads/${init.upload_id}/complete`, {method: 'POST', body: form});
+      const response = await api.raw(`/uploads/${init.upload_id}/complete`, {method: 'POST', body: form});
       if (!response.ok) throw new Error('Upload completion failed');
       setProgress(current => ({...current, [file.name]: 100}));
       setUploadState(current => ({...current, [file.name]: 'complete'}));

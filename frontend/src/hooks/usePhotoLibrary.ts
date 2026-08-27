@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useMemo, useState} from 'react';
-import {API} from '../lib/api';
+import {api} from '../lib/api';
 import type {Photo, View} from '../types';
 
 export type LibraryFilters = {
@@ -25,18 +25,17 @@ export function usePhotoLibrary(options: Options) {
   const query = useMemo(() => ({...options}), [options.enabled, options.view, options.search, options.albumId,
     options.month, options.dateFrom, options.dateTo, options.minSize, options.orientation, options.sort]);
 
-  const photoUrl = useCallback((cursor = '') => `${API}/photos?limit=24&cursor=${encodeURIComponent(cursor)}` +
-    `&view=${query.view === 'albums' || query.view === 'timeline' ? 'photos' : query.view}` +
-    `&search=${encodeURIComponent(query.search)}` +
-    `${query.albumId ? `&album_id=${query.albumId}` : ''}${query.month ? `&month=${query.month}` : ''}` +
-    `&date_from=${query.dateFrom}&date_to=${query.dateTo}&min_size_mb=${encodeURIComponent(query.minSize || '0')}` +
-    `&orientation=${query.orientation}&sort=${query.sort}`, [query]);
+  const photoUrl = useCallback((cursor = '') => api.url('/photos', {
+    limit: 24, cursor, view: query.view === 'albums' || query.view === 'timeline' ? 'photos' : query.view,
+    search: query.search, album_id: query.albumId, month: query.month, date_from: query.dateFrom,
+    date_to: query.dateTo, min_size_mb: query.minSize || '0', orientation: query.orientation, sort: query.sort,
+  }), [query]);
 
   const load = useCallback(async () => {
     if (!query.enabled) {
       setPhotos([]); setNextCursor(null); setTotal(0); return;
     }
-    const response = await fetch(photoUrl());
+    const response = await api.raw(photoUrl());
     if (!response.ok) return;
     const payload = await response.json();
     setPhotos(payload.items); setNextCursor(payload.next_cursor); setTotal(payload.total);
@@ -44,7 +43,7 @@ export function usePhotoLibrary(options: Options) {
 
   const loadMore = useCallback(async () => {
     if (nextCursor === null) return;
-    const response = await fetch(photoUrl(nextCursor));
+    const response = await api.raw(photoUrl(nextCursor));
     if (!response.ok) return;
     const payload = await response.json();
     setPhotos(current => [...current, ...payload.items]);

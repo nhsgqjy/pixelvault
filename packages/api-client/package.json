@@ -1,0 +1,9 @@
+{
+  "name": "@pixelvault/api-client",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node --experimental-strip-types --test test/*.test.ts" },
+  "exports": { ".": "./src/index.ts" },
+  "types": "./src/index.ts"
+}

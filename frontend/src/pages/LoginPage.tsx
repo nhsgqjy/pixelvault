@@ -1,6 +1,6 @@
 import {useState} from 'react';
 import {Sparkles} from 'lucide-react';
-import {API} from '../lib/api';
+import {api} from '../lib/api';
 
 export function LoginPage({onLogin}: {onLogin: () => void}) {
   const [password, setPassword] = useState('');
@@ -9,9 +9,7 @@ export function LoginPage({onLogin}: {onLogin: () => void}) {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     setError('');
-    const response = await fetch(`${API}/auth/login`, {
-      method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({password}),
-    });
+    const response = await api.raw('/auth/login', {method: 'POST', json: {password}});
     if (response.ok) onLogin();
     else setError('Incorrect vault password');
   }

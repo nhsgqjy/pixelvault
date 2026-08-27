@@ -4,6 +4,7 @@ RUN corepack enable
 COPY frontend/package.json frontend/pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
+COPY packages/api-client /packages/api-client
 RUN pnpm build
 
 FROM python:3.12-slim AS runtime

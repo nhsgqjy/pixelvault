@@ -1,5 +1,5 @@
 import {useState} from 'react';
-import {API} from '../lib/api';
+import {api} from '../lib/api';
 import type {Photo} from '../types';
 
 export function MetadataEditor({photo, onSaved}: {photo: Photo; onSaved: (photo: Photo) => void}) {
@@ -12,15 +12,13 @@ export function MetadataEditor({photo, onSaved}: {photo: Photo; onSaved: (photo:
   async function save() {
     setSaving(true);
     try {
-      const updated = await fetch(`${API}/photos/${photo.id}/metadata`, {
-        method: 'PATCH',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({
+      const updated = await api.patch<Photo>(`/photos/${photo.id}/metadata`, {
+        json: {
           caption,
           tags: tags.split(',').map(tag => tag.trim()).filter(Boolean),
           captured_at: capturedAt || null,
-        }),
-      }).then(response => response.json());
+        },
+      });
       onSaved(updated);
     } finally {
       setSaving(false);

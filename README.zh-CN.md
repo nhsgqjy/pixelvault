@@ -95,3 +95,4 @@ pnpm build
 - `src/hooks/useChunkedUpload.ts`：可恢复并发上传状态机。
 - `src/hooks/useVaultActions.ts`：需要身份验证的修改、分享和导出操作。
 - `src/lib` 和 `src/types.ts`：共享配置、工具函数和领域类型。
+- `packages/api-client`：统一管理 API 地址、凭据、JSON 处理和错误。详见 `docs/api-client.zh-CN.md`。

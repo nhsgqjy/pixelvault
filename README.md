@@ -97,3 +97,4 @@ developer's local build directory.
 - `src/hooks/useChunkedUpload.ts` owns the resumable concurrent upload state machine.
 - `src/hooks/useVaultActions.ts` owns authenticated mutations, sharing and exports.
 - `src/lib` and `src/types.ts` provide shared configuration, utilities and domain contracts.
+- `packages/api-client` centralizes API URLs, credentials, JSON handling and errors. See `docs/api-client.md`.
