@@ -1,17 +1,75 @@
 import json
-import sqlite3
 from pathlib import Path
 
+from .database import backend_name, connect, is_postgres
 
-def connect(data_dir: Path):
-    db = sqlite3.connect(data_dir / "pixelvault.db", timeout=10)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA busy_timeout=10000")
-    return db
+
+POSTGRES_SCHEMA = [
+    """CREATE TABLE IF NOT EXISTS photos (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, sha256 TEXT NOT NULL, object_name TEXT NOT NULL,
+        content_type TEXT NOT NULL, size BIGINT NOT NULL, favorite INTEGER NOT NULL DEFAULT 0,
+        trashed INTEGER NOT NULL DEFAULT 0, share_token TEXT, thumbnail_name TEXT, width INTEGER,
+        height INTEGER, captured_at TEXT, share_expires_at TEXT, share_views INTEGER NOT NULL DEFAULT 0,
+        caption TEXT, perceptual_hash TEXT, sort_id BIGSERIAL UNIQUE)""",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_photos_sha256 ON photos(sha256)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_photos_share_token ON photos(share_token) WHERE share_token IS NOT NULL",
+    "CREATE INDEX IF NOT EXISTS idx_photos_state ON photos(trashed, favorite)",
+    "CREATE INDEX IF NOT EXISTS idx_photos_captured_at ON photos(captured_at)",
+    """CREATE TABLE IF NOT EXISTS albums (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL, share_token TEXT,
+        share_expires_at TEXT, share_views INTEGER NOT NULL DEFAULT 0, description TEXT, cover_photo_id TEXT)""",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_share_token ON albums(share_token) WHERE share_token IS NOT NULL",
+    """CREATE TABLE IF NOT EXISTS album_photos (
+        album_id TEXT NOT NULL REFERENCES albums(id) ON DELETE CASCADE,
+        photo_id TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+        added_at TEXT NOT NULL, PRIMARY KEY (album_id, photo_id))""",
+    "CREATE INDEX IF NOT EXISTS idx_album_photos_photo_id ON album_photos(photo_id)",
+    """CREATE TABLE IF NOT EXISTS upload_sessions (
+        id TEXT PRIMARY KEY, filename TEXT NOT NULL, sha256 TEXT NOT NULL UNIQUE, size BIGINT NOT NULL,
+        content_type TEXT NOT NULL, created_at TEXT NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS auth_sessions (
+        token TEXT PRIMARY KEY, created_at TEXT NOT NULL, expires_at TEXT NOT NULL)""",
+    "CREATE INDEX IF NOT EXISTS idx_auth_sessions_expires_at ON auth_sessions(expires_at)",
+    """CREATE TABLE IF NOT EXISTS api_events (
+        id BIGSERIAL PRIMARY KEY, method TEXT NOT NULL, path TEXT NOT NULL, status INTEGER NOT NULL,
+        duration_ms DOUBLE PRECISION NOT NULL, created_at TEXT NOT NULL)""",
+    "CREATE INDEX IF NOT EXISTS idx_api_events_created_at ON api_events(created_at DESC)",
+    "CREATE TABLE IF NOT EXISTS tags (id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL)",
+    "CREATE UNIQUE INDEX IF NOT EXISTS idx_tags_name_lower ON tags(LOWER(name))",
+    """CREATE TABLE IF NOT EXISTS photo_tags (
+        photo_id TEXT NOT NULL REFERENCES photos(id) ON DELETE CASCADE,
+        tag_id BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+        PRIMARY KEY (photo_id, tag_id))""",
+    "CREATE INDEX IF NOT EXISTS idx_photo_tags_tag_id ON photo_tags(tag_id)",
+    """CREATE TABLE IF NOT EXISTS login_attempts (
+        id BIGSERIAL PRIMARY KEY, client_key TEXT NOT NULL, attempted_at TEXT NOT NULL)""",
+    "CREATE INDEX IF NOT EXISTS idx_login_attempts_client_time ON login_attempts(client_key, attempted_at)",
+    """CREATE TABLE IF NOT EXISTS integrity_jobs (
+        id TEXT PRIMARY KEY, status TEXT NOT NULL, total INTEGER NOT NULL DEFAULT 0,
+        completed INTEGER NOT NULL DEFAULT 0, current_name TEXT, result_json TEXT, error TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+    "CREATE INDEX IF NOT EXISTS idx_integrity_jobs_status_created ON integrity_jobs(status, created_at DESC)",
+    """CREATE TABLE IF NOT EXISTS photo_processing_jobs (
+        photo_id TEXT PRIMARY KEY REFERENCES photos(id) ON DELETE CASCADE, status TEXT NOT NULL,
+        error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)""",
+    "CREATE INDEX IF NOT EXISTS idx_photo_processing_status ON photo_processing_jobs(status, updated_at DESC)",
+]
 
 
 def initialize(data_dir: Path, legacy_index: Path):
     with connect(data_dir) as db:
+        if is_postgres():
+            for statement in POSTGRES_SCHEMA:
+                db.execute(statement)
+            db.execute("""UPDATE integrity_jobs SET status='failed', error='Server restarted before completion'
+                WHERE status IN ('queued','running')""")
+            db.execute("""UPDATE photo_processing_jobs SET status='failed', error='Server restarted before completion'
+                WHERE status IN ('queued','running')""")
+            count = db.execute("SELECT COUNT(*) AS count FROM photos").fetchone()["count"]
+            if count == 0 and legacy_index.exists():
+                for item in json.loads(legacy_index.read_text(encoding="utf-8")):
+                    upsert(db, item)
+            return
         db.execute("PRAGMA journal_mode=WAL")
         db.execute("PRAGMA synchronous=NORMAL")
         db.executescript("""
@@ -126,7 +184,7 @@ def initialize(data_dir: Path, legacy_index: Path):
                 db.execute(f"ALTER TABLE albums ADD COLUMN {name} {definition}")
         db.execute("""CREATE UNIQUE INDEX IF NOT EXISTS idx_albums_share_token
             ON albums(share_token) WHERE share_token IS NOT NULL""")
-        count = db.execute("SELECT COUNT(*) FROM photos").fetchone()[0]
+        count = db.execute("SELECT COUNT(*) AS count FROM photos").fetchone()["count"]
         if count == 0 and legacy_index.exists():
             for item in json.loads(legacy_index.read_text(encoding="utf-8")):
                 upsert(db, item)
@@ -208,7 +266,7 @@ def query_photos(data_dir: Path, limit: int, cursor: str, view: str, search: str
         conditions.append("p.width = p.height")
     where = " AND ".join(conditions) if conditions else "1=1"
     with connect(data_dir) as db:
-        total = db.execute(f"SELECT COUNT(*) FROM photos p WHERE {where}", params).fetchone()[0]
+        total = db.execute(f"SELECT COUNT(*) AS count FROM photos p WHERE {where}", params).fetchone()["count"]
         page_conditions = list(conditions)
         page_params = list(params)
         sort_value = cursor_rowid = None
@@ -278,7 +336,7 @@ def set_photos_trashed(data_dir: Path, photo_ids: list[str], trashed: bool):
         return 0
     placeholders = ",".join("?" for _ in unique_ids)
     with connect(data_dir) as db:
-        found = db.execute(f"SELECT COUNT(*) FROM photos WHERE id IN ({placeholders})", unique_ids).fetchone()[0]
+        found = db.execute(f"SELECT COUNT(*) AS count FROM photos WHERE id IN ({placeholders})", unique_ids).fetchone()["count"]
         if found != len(unique_ids):
             raise KeyError("One or more photos were not found")
         cursor = db.execute(f"UPDATE photos SET trashed=? WHERE id IN ({placeholders})",
@@ -308,7 +366,7 @@ def set_photo_metadata(data_dir: Path, photo_id: str, caption: str, tags: list[s
         db.execute("DELETE FROM photo_tags WHERE photo_id=?", (photo_id,))
         for tag in tags:
             db.execute("INSERT OR IGNORE INTO tags(name) VALUES(?)", (tag,))
-            tag_id = db.execute("SELECT id FROM tags WHERE name=? COLLATE NOCASE", (tag,)).fetchone()[0]
+            tag_id = db.execute("SELECT id FROM tags WHERE LOWER(name)=LOWER(?)", (tag,)).fetchone()["id"]
             db.execute("INSERT OR IGNORE INTO photo_tags(photo_id,tag_id) VALUES(?,?)", (photo_id, tag_id))
         db.execute("DELETE FROM tags WHERE id NOT IN (SELECT DISTINCT tag_id FROM photo_tags)")
 
@@ -378,7 +436,7 @@ def add_photos_to_album(data_dir: Path, album_id: str, photo_ids: list[str], add
 
 def album_photo_ids(data_dir: Path, album_id: str):
     with connect(data_dir) as db:
-        return {row[0] for row in db.execute("SELECT photo_id FROM album_photos WHERE album_id=?", (album_id,))}
+        return {row["photo_id"] for row in db.execute("SELECT photo_id FROM album_photos WHERE album_id=?", (album_id,))}
 
 
 def rename_album(data_dir: Path, album_id: str, name: str):
@@ -454,8 +512,8 @@ def record_login_failure(data_dir: Path, client_key: str, attempted_at: str):
 
 def recent_login_failures(data_dir: Path, client_key: str, since: str):
     with connect(data_dir) as db:
-        return db.execute("SELECT COUNT(*) FROM login_attempts WHERE client_key=? AND attempted_at>=?",
-                          (client_key, since)).fetchone()[0]
+        return db.execute("SELECT COUNT(*) AS count FROM login_attempts WHERE client_key=? AND attempted_at>=?",
+                          (client_key, since)).fetchone()["count"]
 
 
 def clear_login_failures(data_dir: Path, client_key: str):
@@ -467,8 +525,8 @@ def security_stats(data_dir: Path, now: str, failure_since: str):
     with connect(data_dir) as db:
         db.execute("DELETE FROM auth_sessions WHERE expires_at<=?", (now,))
         return {
-            "active_sessions": db.execute("SELECT COUNT(*) FROM auth_sessions WHERE expires_at>?", (now,)).fetchone()[0],
-            "recent_failed_logins": db.execute("SELECT COUNT(*) FROM login_attempts WHERE attempted_at>=?", (failure_since,)).fetchone()[0],
+            "active_sessions": db.execute("SELECT COUNT(*) AS count FROM auth_sessions WHERE expires_at>?", (now,)).fetchone()["count"],
+            "recent_failed_logins": db.execute("SELECT COUNT(*) AS count FROM login_attempts WHERE attempted_at>=?", (failure_since,)).fetchone()["count"],
         }
 
 
@@ -479,11 +537,14 @@ def delete_all_auth_sessions(data_dir: Path):
 
 def record_api_event(data_dir: Path, method: str, path: str, status: int, duration_ms: float, created_at: str):
     with connect(data_dir) as db:
-        cursor = db.execute("INSERT INTO api_events(method,path,status,duration_ms,created_at) VALUES(?,?,?,?,?)",
-                            (method, path, status, duration_ms, created_at))
+        event_id = db.execute(
+            """INSERT INTO api_events(method,path,status,duration_ms,created_at)
+                VALUES(?,?,?,?,?) RETURNING id""",
+            (method, path, status, duration_ms, created_at),
+        ).fetchone()["id"]
         # Keep request logging cheap: bounded cleanup is maintenance work, not
         # something every API request should repeat.
-        if cursor.lastrowid % 100 == 0:
+        if event_id % 100 == 0:
             db.execute("""DELETE FROM api_events WHERE id < COALESCE(
                 (SELECT id FROM api_events ORDER BY id DESC LIMIT 1 OFFSET 999), 0)""")
 

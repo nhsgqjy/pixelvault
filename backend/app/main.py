@@ -29,6 +29,7 @@ from .db import (add_photos_to_album, album_photo_ids, all_photos, create_album,
                  record_api_event, record_login_failure, rename_album, save_all, security_stats, set_album_share,
                  set_photo_metadata, set_photos_trashed, update_album_presentation, update_fields, update_integrity_job,
                  update_photo_processing)
+from .database import backend_name
 
 app = FastAPI(title="PixelVault API", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -133,7 +134,7 @@ def run_photo_processing(photo_id: str):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "pixelvault"}
+    return {"status": "ok", "service": "pixelvault", "database": backend_name()}
 
 
 class AlbumCreate(BaseModel):

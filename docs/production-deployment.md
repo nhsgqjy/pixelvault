@@ -2,7 +2,7 @@
 
 ## Deployment model
 
-One container serves the compiled React application and FastAPI under the same origin. SQLite metadata, originals, thumbnails, upload chunks and recovery quarantine all live in `/app/data`, backed by the `pixelvault-data` Docker volume.
+One container serves the compiled React application and FastAPI under the same origin. Local development defaults to SQLite. Hosted deployments use PostgreSQL when `DATABASE_URL` is set. Originals, thumbnails, upload chunks and recovery quarantine remain under `/app/data` until the separate object-storage migration is complete.
 
 The old PostgreSQL and MinIO services were removed because the application did not use them. This deployment documents the architecture that actually runs rather than advertising inactive infrastructure.
 
@@ -54,17 +54,39 @@ the password value or place it in `render.yaml`:
 | `PIXELVAULT_COOKIE_SECURE` | `true` |
 | `PIXELVAULT_ENV` | `production` |
 | `DATA_DIR` | `/app/data` |
+| `DATABASE_URL` | Render Postgres internal connection string |
 
 Render supplies `PORT` at runtime. The container uses that value automatically
 and falls back to port 8000 for local Compose deployments. Render terminates
 public TLS and forwards requests to this container, so secure cookies must stay
 enabled.
 
-The Free web-service filesystem is ephemeral. It is suitable for validating the
-public HTTPS deployment, but uploaded photos and SQLite state can disappear on a
-restart or redeploy. Do not treat it as durable storage. A paid Render service
-can attach a persistent disk at `/app/data`; the longer-term multi-client design
-will instead move metadata to PostgreSQL and media to object storage.
+For a Blueprint deployment, `render.yaml` creates `pixelvault-db` and injects
+its private `connectionString` as `DATABASE_URL`. For a manually created Web
+Service, create a PostgreSQL database in the same Singapore region and add its
+internal URL as the `DATABASE_URL` environment variable. After deployment,
+`/api/health` must report `"database":"postgresql"`.
+
+Render Free PostgreSQL is temporary: it expires 30 days after creation, has no
+managed backups and must be upgraded during the 14-day grace period to avoid
+deletion. This project intentionally keeps the connection provider-neutral so
+the database can be moved before expiry. Run the migration tool in dry-run mode
+first, then provide the target URL only through the environment:
+
+```bash
+DATABASE_URL="postgresql://..." python tools/migrate_sqlite_to_postgres.py
+DATABASE_URL="postgresql://..." python tools/migrate_sqlite_to_postgres.py --apply
+```
+
+The target must be empty. The apply step refuses a populated database and
+verifies every table row count after copying. Never commit `DATABASE_URL`.
+
+The Free web-service filesystem remains ephemeral. PostgreSQL now protects
+business metadata across web-service redeploys, but originals and thumbnails
+can still disappear until object storage is enabled. Export a portable backup
+before switching `DATABASE_URL`, then verify representative records after the
+deployment. Do not claim end-to-end durability until the object-storage stage
+is complete.
 
 ## LAN and HTTPS
 

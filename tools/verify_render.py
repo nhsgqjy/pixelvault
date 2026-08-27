@@ -36,6 +36,12 @@ def main() -> None:
         'value: "true"',
         "key: DATA_DIR",
         "value: /app/data",
+        "key: DATABASE_URL",
+        "fromDatabase:",
+        "name: pixelvault-db",
+        "property: connectionString",
+        "databases:",
+        'postgresMajorVersion: "17"',
     ):
         require(blueprint, expected, "render.yaml")
 
