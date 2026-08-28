@@ -7,7 +7,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app.database import _postgres_sql, backend_name
-from app.db import api_metrics, initialize, recent_api_events, record_api_event
+from app.db import (api_metrics, create_upload, get_upload_by_hash, initialize,
+                    recent_api_events, record_api_event)
 
 
 class DatabaseCompatibilityTest(unittest.TestCase):
@@ -69,6 +70,21 @@ class DatabaseCompatibilityTest(unittest.TestCase):
                              "2026-08-28T00:00:00+00:00")
             self.assertEqual(api_metrics(data_dir)["average_ms"], 12.4)
             self.assertEqual(recent_api_events(data_dir)[0]["duration_ms"], 12.4)
+
+    def test_replaces_stale_upload_session_with_the_same_hash(self):
+        with TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            initialize(data_dir, data_dir / "photos.json")
+            first = {"id": "old", "filename": "old.jpg", "sha256": "a" * 64,
+                     "size": 10, "content_type": "image/jpeg", "created_at": "old"}
+            replacement = {**first, "id": "new", "filename": "new.jpg",
+                           "size": 20, "created_at": "new"}
+            create_upload(data_dir, first)
+            create_upload(data_dir, replacement)
+            saved = get_upload_by_hash(data_dir, first["sha256"])
+            self.assertEqual(saved["id"], "new")
+            self.assertEqual(saved["filename"], "new.jpg")
+            self.assertEqual(saved["size"], 20)
 
 
 if __name__ == "__main__":
