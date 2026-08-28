@@ -339,8 +339,12 @@ def set_photos_trashed(data_dir: Path, photo_ids: list[str], trashed: bool):
         found = db.execute(f"SELECT COUNT(*) AS count FROM photos WHERE id IN ({placeholders})", unique_ids).fetchone()["count"]
         if found != len(unique_ids):
             raise KeyError("One or more photos were not found")
+        # PostgreSQL uses a native BOOLEAN column and rejects SQLite's 1/0
+        # representation.  Keep the value native for Postgres while retaining
+        # the integer representation used by the local SQLite schema.
+        value = trashed if is_postgres() else int(trashed)
         cursor = db.execute(f"UPDATE photos SET trashed=? WHERE id IN ({placeholders})",
-                            (int(trashed), *unique_ids))
+                            (value, *unique_ids))
         return cursor.rowcount
 
 

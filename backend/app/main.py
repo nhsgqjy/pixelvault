@@ -604,9 +604,13 @@ def batch(payload: BatchAction):
     elif payload.action == "remove_album":
         if not payload.album_id: raise HTTPException(422, "album_id is required")
         remove_photos_from_album(DATA, payload.album_id, ids)
-    elif payload.action in {"favorite", "trash", "restore"}:
-        field, value = ("favorite", True) if payload.action == "favorite" else ("trashed", payload.action == "trash")
-        for photo_id in ids: update_photo(photo_id, **{field: value})
+    elif payload.action in {"trash", "restore"}:
+        try:
+            set_photos_trashed(DATA, ids, payload.action == "trash")
+        except KeyError:
+            raise HTTPException(404, "One or more photos were not found")
+    elif payload.action == "favorite":
+        for photo_id in ids: update_photo(photo_id, favorite=True)
     elif payload.action == "set_captured_at":
         captured_at = normalized_capture_time(payload.captured_at)
         for photo_id in ids: update_photo(photo_id, captured_at=captured_at)

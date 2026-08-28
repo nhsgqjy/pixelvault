@@ -7,8 +7,9 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app.database import Connection, _postgres_sql, backend_name
-from app.db import (api_metrics, create_upload, get_upload_by_hash, initialize,
-                    recent_api_events, record_api_event)
+from app.db import (api_metrics, create_upload, get_photo, get_upload_by_hash,
+                    initialize, recent_api_events, record_api_event,
+                    set_photos_trashed, upsert)
 
 
 class DatabaseCompatibilityTest(unittest.TestCase):
@@ -115,6 +116,49 @@ class DatabaseCompatibilityTest(unittest.TestCase):
             "ON CONFLICT DO NOTHING",
             rows,
         ))
+
+    def test_batch_trash_and_restore_are_atomic_in_sqlite(self):
+        with TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            initialize(data_dir, data_dir / "photos.json")
+            for photo_id in ("one", "two"):
+                with Connection(data_dir) as db:
+                    upsert(db, {"id": photo_id, "name": f"{photo_id}.jpg", "sha256": photo_id,
+                                "object_name": f"{photo_id}.jpg", "content_type": "image/jpeg", "size": 1,
+                                "favorite": False, "trashed": False, "share_token": None})
+            self.assertEqual(set_photos_trashed(data_dir, ["one", "two"], True), 2)
+            self.assertTrue(get_photo(data_dir, "one")["trashed"])
+            self.assertTrue(get_photo(data_dir, "two")["trashed"])
+            self.assertEqual(set_photos_trashed(data_dir, ["one", "two"], False), 2)
+            self.assertFalse(get_photo(data_dir, "one")["trashed"])
+
+    def test_postgres_batch_trash_uses_boolean_parameter(self):
+        class Result:
+            def __init__(self, count=None, rowcount=0):
+                self.count = count
+                self.rowcount = rowcount
+
+            def fetchone(self):
+                return {"count": self.count}
+
+        class FakeConnection:
+            def __init__(self):
+                self.calls = []
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def execute(self, sql, params):
+                self.calls.append((sql, params))
+                return Result(count=2) if sql.startswith("SELECT") else Result(rowcount=2)
+
+        fake = FakeConnection()
+        with patch("app.db.connect", return_value=fake), patch("app.db.is_postgres", return_value=True):
+            self.assertEqual(set_photos_trashed(Path("unused"), ["one", "two"], True), 2)
+        self.assertIs(fake.calls[1][1][0], True)
 
 
 if __name__ == "__main__":

@@ -18,20 +18,29 @@ export function useVaultActions(options: Options) {
   const {checked, setChecked, activeAlbum, setActiveAlbum, setConfirming, setNotice, setPhotos, load, loadAlbums} = options;
 
   async function performAction(id: string, kind: DeleteIntent['kind'] | 'favorite' | 'restore' | 'share' | 'unshare') {
-    let suffix = '';
-    if (kind === 'share') {
-      const raw = prompt('Share link duration in days', '7');
-      if (raw === null) return;
-      suffix = `?expires_hours=${Math.min(365, Math.max(1, Number(raw) || 7)) * 24}`;
+    try {
+      let suffix = '';
+      if (kind === 'share') {
+        const raw = prompt('Share link duration in days', '7');
+        if (raw === null) return false;
+        suffix = `?expires_hours=${Math.min(365, Math.max(1, Number(raw) || 7)) * 24}`;
+      }
+      const path = (kind === 'unshare' ? `/photos/${id}/share` : `/photos/${id}${kind === 'delete' ? '' : `/${kind}`}`) + suffix;
+      const method = kind === 'share' ? 'POST' : kind === 'unshare' || kind === 'delete' ? 'DELETE' : 'PATCH';
+      const result = await api.request<{url?: string}>(path, {method});
+      if (kind === 'share' && result.url) {
+        await navigator.clipboard?.writeText(`${location.origin}${result.url}`);
+        setNotice('Expiring share link copied');
+      } else if (kind === 'trash') setNotice('Moved to Trash · original kept');
+      else if (kind === 'restore') setNotice('Photo restored');
+      else if (kind === 'delete') setNotice('Photo permanently deleted');
+      await load();
+      return true;
+    } catch (error) {
+      const label = kind === 'trash' ? 'Move to Trash failed' : kind === 'restore' ? 'Restore failed' : 'Photo update failed';
+      setNotice(error instanceof Error ? `${label} · ${error.message}` : label);
+      return false;
     }
-    const path = (kind === 'unshare' ? `/photos/${id}/share` : `/photos/${id}${kind === 'delete' ? '' : `/${kind}`}`) + suffix;
-    const method = kind === 'share' ? 'POST' : kind === 'unshare' || kind === 'delete' ? 'DELETE' : 'PATCH';
-    const result = await api.raw(path, {method}).then(response => response.json());
-    if (kind === 'share') {
-      await navigator.clipboard?.writeText(`${location.origin}${result.url}`);
-      setNotice('Expiring share link copied');
-    }
-    await load();
   }
 
   async function action(id: string, kind: DeleteIntent['kind'] | 'favorite' | 'restore' | 'share' | 'unshare') {
