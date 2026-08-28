@@ -110,7 +110,9 @@ def enrich_image(item: dict):
                 image = ImageOps.exif_transpose(image)
                 item["width"], item["height"] = image.size
                 exif = image.getexif()
-                item["captured_at"] = exif.get(36867) or exif.get(306)
+                # Prefer the camera timestamp, but retain the upload timestamp
+                # assigned when a photo has no usable EXIF date.
+                item["captured_at"] = exif.get(36867) or exif.get(306) or item.get("captured_at")
                 image.thumbnail((640, 640))
                 image.convert("RGB").save(thumb_path, "WEBP", quality=82, method=6)
         STORAGE.put_file(thumbnail_key(thumb_name), thumb_path, "image/webp")
@@ -978,10 +980,11 @@ def complete(upload_id: str, background_tasks: BackgroundTasks, filename: str = 
     if digest.hexdigest() != sha256:
         target.unlink(missing_ok=True)
         raise HTTPException(422, "SHA-256 mismatch")
+    stored_at = datetime.now(timezone.utc).isoformat()
     item = {"id": uuid.uuid4().hex, "name": filename, "sha256": sha256, "object_name": object_name,
             "content_type": content_type, "size": target.stat().st_size, "favorite": False,
             "trashed": False, "share_token": None, "thumbnail_name": None, "width": None,
-            "height": None, "captured_at": None, "share_expires_at": None, "share_views": 0,
+            "height": None, "captured_at": stored_at, "share_expires_at": None, "share_views": 0,
             "caption": ""}
     key = original_key(object_name)
     existed = STORAGE.exists(key)
