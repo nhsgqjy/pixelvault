@@ -85,7 +85,7 @@ class S3Storage:
             endpoint_url=_required("S3_ENDPOINT_URL"),
             aws_access_key_id=_required("S3_ACCESS_KEY_ID"),
             aws_secret_access_key=_required("S3_SECRET_ACCESS_KEY"),
-            region_name=os.getenv("S3_REGION", "auto"),
+            region_name=_required("S3_REGION"),
             config=Config(signature_version="s3v4", retries={"max_attempts": 3, "mode": "standard"}),
         )
 

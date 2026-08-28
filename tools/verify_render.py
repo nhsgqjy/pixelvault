@@ -49,7 +49,6 @@ def main() -> None:
         "key: S3_ACCESS_KEY_ID",
         "key: S3_SECRET_ACCESS_KEY",
         "key: S3_REGION",
-        "value: auto",
     ):
         require(blueprint, expected, "render.yaml")
 

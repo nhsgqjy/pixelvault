@@ -56,11 +56,11 @@ the password value or place it in `render.yaml`:
 | `DATA_DIR` | `/app/data` |
 | `DATABASE_URL` | Render Postgres internal connection string |
 | `STORAGE_BACKEND` | `s3` for hosted deployments; omit locally |
-| `S3_ENDPOINT_URL` | S3-compatible endpoint, such as the Cloudflare R2 endpoint |
+| `S3_ENDPOINT_URL` | Backblaze Bucket S3 endpoint, such as `https://s3.us-west-004.backblazeb2.com` |
 | `S3_BUCKET` | Private media bucket name |
 | `S3_ACCESS_KEY_ID` | Object-storage access key ID |
 | `S3_SECRET_ACCESS_KEY` | Object-storage secret; never commit it |
-| `S3_REGION` | `auto` for Cloudflare R2 |
+| `S3_REGION` | Region embedded in the B2 endpoint, such as `us-west-004` |
 
 Render supplies `PORT` at runtime. The container uses that value automatically
 and falls back to port 8000 for local Compose deployments. Render terminates
@@ -86,6 +86,11 @@ DATABASE_URL="postgresql://..." python tools/migrate_sqlite_to_postgres.py --app
 
 The target must be empty. The apply step refuses a populated database and
 verifies every table row count after copying. Never commit `DATABASE_URL`.
+
+The recommended hosted provider is Backblaze B2 with a private bucket and an
+Application Key restricted to that bucket. Its key ID maps to
+`S3_ACCESS_KEY_ID`; its application key maps to `S3_SECRET_ACCESS_KEY`. Copy the
+endpoint and region from the bucket page instead of guessing them.
 
 With `STORAGE_BACKEND=s3`, originals and thumbnails are stored under the
 `objects/` and `thumbnails/` prefixes. Upload chunks remain temporary and are

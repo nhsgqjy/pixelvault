@@ -6,7 +6,7 @@ main = (ROOT / "backend/app/main.py").read_text(encoding="utf-8")
 migration = (ROOT / "tools/migrate_files_to_object_storage.py").read_text(encoding="utf-8")
 
 for expected in ("class LocalStorage", "class S3Storage", "S3_ENDPOINT_URL", "list_sizes",
-                 "download_file", "upload_file", "copy_object"):
+                 'S3_REGION")', "download_file", "upload_file", "copy_object"):
     assert expected in storage, expected
 for expected in ("STORAGE.put_file", "STORAGE.local_file", "STORAGE.open", "STORAGE.delete",
                  '"storage": STORAGE.name'):

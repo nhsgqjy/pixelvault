@@ -59,12 +59,13 @@ class LocalStorageTest(unittest.TestCase):
             "S3_BUCKET": "pixelvault-test",
             "S3_ACCESS_KEY_ID": "test-key",
             "S3_SECRET_ACCESS_KEY": "test-secret",
-            "S3_REGION": "auto",
+            "S3_REGION": "us-west-004",
         }
         with patch.dict(os.environ, values, clear=True):
             storage = create_storage(self.root)
             self.assertEqual(storage.name, "s3")
             self.assertEqual(storage.bucket, "pixelvault-test")
+            self.assertEqual(storage.client.meta.region_name, "us-west-004")
 
     def test_s3_lists_sizes_with_one_paginated_request(self):
         values = {
@@ -73,6 +74,7 @@ class LocalStorageTest(unittest.TestCase):
             "S3_BUCKET": "pixelvault-test",
             "S3_ACCESS_KEY_ID": "test-key",
             "S3_SECRET_ACCESS_KEY": "test-secret",
+            "S3_REGION": "us-west-004",
         }
         paginator = MagicMock()
         paginator.paginate.return_value = [{"Contents": [
@@ -88,6 +90,18 @@ class LocalStorageTest(unittest.TestCase):
                 "thumbnails/b.webp": 34,
             })
         paginator.paginate.assert_called_once_with(Bucket="pixelvault-test", Prefix="thumbnails/")
+
+    def test_s3_requires_explicit_region(self):
+        values = {
+            "STORAGE_BACKEND": "s3",
+            "S3_ENDPOINT_URL": "https://s3.us-west-004.backblazeb2.com",
+            "S3_BUCKET": "pixelvault-test",
+            "S3_ACCESS_KEY_ID": "test-key",
+            "S3_SECRET_ACCESS_KEY": "test-secret",
+        }
+        with patch.dict(os.environ, values, clear=True):
+            with self.assertRaisesRegex(RuntimeError, "S3_REGION"):
+                create_storage(self.root)
 
 
 if __name__ == "__main__":
