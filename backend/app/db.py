@@ -321,6 +321,12 @@ def save_all(data_dir: Path, items):
 def update_fields(data_dir: Path, photo_id: str, changes: dict):
     allowed = {"name", "favorite", "trashed", "share_token", "thumbnail_name", "width", "height", "captured_at", "share_expires_at", "share_views", "caption", "perceptual_hash"}
     fields = {key: value for key, value in changes.items() if key in allowed}
+    # Both schemas intentionally store flags as INTEGER. SQLite coerces Python
+    # booleans automatically, while psycopg/PostgreSQL requires an explicit
+    # 0/1 value for INTEGER columns.
+    for flag in ("favorite", "trashed"):
+        if flag in fields:
+            fields[flag] = int(bool(fields[flag]))
     if not fields:
         return
     assignments = ", ".join(f"{key}=?" for key in fields)
@@ -339,12 +345,8 @@ def set_photos_trashed(data_dir: Path, photo_ids: list[str], trashed: bool):
         found = db.execute(f"SELECT COUNT(*) AS count FROM photos WHERE id IN ({placeholders})", unique_ids).fetchone()["count"]
         if found != len(unique_ids):
             raise KeyError("One or more photos were not found")
-        # PostgreSQL uses a native BOOLEAN column and rejects SQLite's 1/0
-        # representation.  Keep the value native for Postgres while retaining
-        # the integer representation used by the local SQLite schema.
-        value = trashed if is_postgres() else int(trashed)
         cursor = db.execute(f"UPDATE photos SET trashed=? WHERE id IN ({placeholders})",
-                            (value, *unique_ids))
+                            (int(trashed), *unique_ids))
         return cursor.rowcount
 
 

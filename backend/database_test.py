@@ -132,7 +132,7 @@ class DatabaseCompatibilityTest(unittest.TestCase):
             self.assertEqual(set_photos_trashed(data_dir, ["one", "two"], False), 2)
             self.assertFalse(get_photo(data_dir, "one")["trashed"])
 
-    def test_postgres_batch_trash_uses_boolean_parameter(self):
+    def test_postgres_integer_flags_are_normalized(self):
         class Result:
             def __init__(self, count=None, rowcount=0):
                 self.count = count
@@ -156,9 +156,15 @@ class DatabaseCompatibilityTest(unittest.TestCase):
                 return Result(count=2) if sql.startswith("SELECT") else Result(rowcount=2)
 
         fake = FakeConnection()
-        with patch("app.db.connect", return_value=fake), patch("app.db.is_postgres", return_value=True):
+        with patch("app.db.connect", return_value=fake):
             self.assertEqual(set_photos_trashed(Path("unused"), ["one", "two"], True), 2)
-        self.assertIs(fake.calls[1][1][0], True)
+        self.assertEqual(fake.calls[1][1][0], 1)
+
+        fake.calls.clear()
+        from app.db import update_fields
+        with patch("app.db.connect", return_value=fake):
+            update_fields(Path("unused"), "one", {"trashed": True, "favorite": False})
+        self.assertEqual(fake.calls[0][1], (1, 0, "one"))
 
 
 if __name__ == "__main__":
