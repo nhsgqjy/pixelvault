@@ -42,6 +42,14 @@ def main() -> None:
         "property: connectionString",
         "databases:",
         'postgresMajorVersion: "17"',
+        "key: STORAGE_BACKEND",
+        "value: s3",
+        "key: S3_ENDPOINT_URL",
+        "key: S3_BUCKET",
+        "key: S3_ACCESS_KEY_ID",
+        "key: S3_SECRET_ACCESS_KEY",
+        "key: S3_REGION",
+        "value: auto",
     ):
         require(blueprint, expected, "render.yaml")
 

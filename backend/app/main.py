@@ -15,7 +15,7 @@ from pathlib import Path, PurePosixPath
 
 from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.background import BackgroundTask, BackgroundTasks as StarletteBackgroundTasks
 from PIL import Image, ImageOps
@@ -30,18 +30,17 @@ from .db import (add_photos_to_album, album_photo_ids, all_photos, create_album,
                  set_photo_metadata, set_photos_trashed, update_album_presentation, update_fields, update_integrity_job,
                  update_photo_processing)
 from .database import backend_name
+from .storage import create_storage
 
 app = FastAPI(title="PixelVault API", version="0.1.0")
 app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
                    allow_credentials=True, allow_methods=["*"], allow_headers=["*"])
 
 DATA = Path(os.getenv("DATA_DIR", "data"))
-CHUNKS, OBJECTS = DATA / "chunks", DATA / "objects"
-THUMBS = DATA / "thumbnails"
+CHUNKS = DATA / "chunks"
 INDEX = DATA / "photos.json"
 CHUNKS.mkdir(parents=True, exist_ok=True)
-OBJECTS.mkdir(parents=True, exist_ok=True)
-THUMBS.mkdir(parents=True, exist_ok=True)
+STORAGE = create_storage(DATA)
 initialize(DATA, INDEX)
 VAULT_PASSWORD = os.getenv("PIXELVAULT_DEMO_PASSWORD", "demo1234")
 ENVIRONMENT = os.getenv("PIXELVAULT_ENV", "development").lower()
@@ -82,20 +81,44 @@ def records() -> list[dict]:
 def save(items: list[dict]) -> None:
     save_all(DATA, items)
 
-def enrich_image(item: dict):
-    source = OBJECTS / item["object_name"]
-    thumb_name = f"{item['sha256']}.webp"
+
+def original_key(name: str) -> str:
+    return f"objects/{name}"
+
+
+def thumbnail_key(name: str) -> str:
+    return f"thumbnails/{name}"
+
+
+def media_response(key: str, content_type: str):
     try:
-        with Image.open(source) as image:
-            image = ImageOps.exif_transpose(image)
-            item["width"], item["height"] = image.size
-            exif = image.getexif()
-            item["captured_at"] = exif.get(36867) or exif.get(306)
-            image.thumbnail((640, 640))
-            image.convert("RGB").save(THUMBS / thumb_name, "WEBP", quality=82, method=6)
-            item["thumbnail_name"] = thumb_name
+        handle = STORAGE.open(key)
+    except FileNotFoundError:
+        raise HTTPException(404, "Stored media was not found")
+    blocks = iter(lambda: handle.read(1024 * 1024), b"")
+    return StreamingResponse(blocks, media_type=content_type, background=BackgroundTask(handle.close))
+
+
+def enrich_image(item: dict):
+    thumb_name = f"{item['sha256']}.webp"
+    thumb = tempfile.NamedTemporaryFile(prefix="pixelvault-thumb-", suffix=".webp", delete=False)
+    thumb_path = Path(thumb.name)
+    thumb.close()
+    try:
+        with STORAGE.local_file(original_key(item["object_name"])) as source:
+            with Image.open(source) as image:
+                image = ImageOps.exif_transpose(image)
+                item["width"], item["height"] = image.size
+                exif = image.getexif()
+                item["captured_at"] = exif.get(36867) or exif.get(306)
+                image.thumbnail((640, 640))
+                image.convert("RGB").save(thumb_path, "WEBP", quality=82, method=6)
+        STORAGE.put_file(thumbnail_key(thumb_name), thumb_path, "image/webp")
+        item["thumbnail_name"] = thumb_name
     except Exception:
         item["thumbnail_name"] = None
+    finally:
+        thumb_path.unlink(missing_ok=True)
     return item
 
 
@@ -134,7 +157,7 @@ def run_photo_processing(photo_id: str):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "service": "pixelvault", "database": backend_name()}
+    return {"status": "ok", "service": "pixelvault", "database": backend_name(), "storage": STORAGE.name}
 
 
 class AlbumCreate(BaseModel):
@@ -188,7 +211,8 @@ def build_photo_archive(items: list[dict], archive_name: str):
             if safe_name.casefold() in used_names:
                 safe_name = f"{index}-{safe_name}"
             used_names.add(safe_name.casefold())
-            archive.write(OBJECTS / item["object_name"], f"photos/{safe_name}")
+            with STORAGE.local_file(original_key(item["object_name"])) as source:
+                archive.write(source, f"photos/{safe_name}")
             manifest.append({key: item.get(key) for key in
                              ("id", "name", "sha256", "size", "content_type", "width", "height",
                               "captured_at", "caption", "tags")})
@@ -423,19 +447,19 @@ def shared_album_photo(token: str, photo_id: str):
 @app.get("/api/share/albums/{token}/photos/{photo_id}/thumbnail")
 def shared_album_thumbnail(token: str, photo_id: str):
     item = shared_album_photo(token, photo_id)
-    if not item.get("thumbnail_name") or not (THUMBS / item["thumbnail_name"]).is_file():
+    if not item.get("thumbnail_name") or not STORAGE.exists(thumbnail_key(item["thumbnail_name"])):
         item = enrich_image(item)
         if item.get("thumbnail_name"):
             update_photo(photo_id, thumbnail_name=item["thumbnail_name"], width=item.get("width"),
                          height=item.get("height"), captured_at=item.get("captured_at"))
-    path = THUMBS / item["thumbnail_name"] if item.get("thumbnail_name") else OBJECTS / item["object_name"]
-    return FileResponse(path, media_type="image/webp" if item.get("thumbnail_name") else item["content_type"])
+    key = thumbnail_key(item["thumbnail_name"]) if item.get("thumbnail_name") else original_key(item["object_name"])
+    return media_response(key, "image/webp" if item.get("thumbnail_name") else item["content_type"])
 
 
 @app.get("/api/share/albums/{token}/photos/{photo_id}/content")
 def shared_album_content(token: str, photo_id: str):
     item = shared_album_photo(token, photo_id)
-    return FileResponse(OBJECTS / item["object_name"], media_type=item["content_type"])
+    return media_response(original_key(item["object_name"]), item["content_type"])
 
 
 @app.post("/api/photos/export")
@@ -455,7 +479,8 @@ def export_vault_backup():
     with zipfile.ZipFile(target, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
         for item in items:
             archive_path = f"objects/{item['id']}/{Path(item['name']).name or 'photo'}"
-            archive.write(OBJECTS / item["object_name"], archive_path)
+            with STORAGE.local_file(original_key(item["object_name"])) as source:
+                archive.write(source, archive_path)
             manifest_photos.append({**{key: item.get(key) for key in
                                       ("id", "name", "sha256", "size", "content_type", "favorite", "trashed",
                                        "width", "height", "captured_at", "caption", "tags")},
@@ -517,16 +542,28 @@ def import_vault_backup(backup: UploadFile = File(...)):
             if digest.hexdigest() != sha:
                 temporary_path.unlink(missing_ok=True)
                 raise HTTPException(422, f"Checksum mismatch: {source_item.get('name', 'unknown')}")
-            shutil.move(str(temporary_path), str(OBJECTS / object_name))
+            content_type = source_item.get("content_type") or "application/octet-stream"
+            object_key = original_key(object_name)
+            existed = STORAGE.exists(object_key)
+            try:
+                STORAGE.put_file(object_key, temporary_path, content_type)
+            finally:
+                temporary_path.unlink(missing_ok=True)
             new_id = uuid.uuid4().hex
             item = {"id": new_id, "name": Path(source_item.get("name", "photo")).name, "sha256": sha,
-                    "object_name": object_name, "content_type": source_item.get("content_type") or "application/octet-stream",
-                    "size": (OBJECTS / object_name).stat().st_size, "favorite": bool(source_item.get("favorite")),
+                    "object_name": object_name, "content_type": content_type,
+                    "size": int(source_item.get("size") or STORAGE.size(original_key(object_name))),
+                    "favorite": bool(source_item.get("favorite")),
                     "trashed": bool(source_item.get("trashed")), "share_token": None, "thumbnail_name": None,
                     "width": source_item.get("width"), "height": source_item.get("height"),
                     "captured_at": source_item.get("captured_at"), "share_expires_at": None, "share_views": 0,
                     "caption": source_item.get("caption") or ""}
-            save([item]); set_photo_metadata(DATA, new_id, item["caption"], source_item.get("tags") or [])
+            try:
+                save([item]); set_photo_metadata(DATA, new_id, item["caption"], source_item.get("tags") or [])
+            except Exception:
+                if not existed:
+                    STORAGE.delete(object_key)
+                raise
             existing[sha] = item; id_map[source_item["id"]] = new_id; imported += 1
         existing_albums = {album["name"].casefold(): album for album in list_albums(DATA)}
         restored_albums = 0
@@ -574,8 +611,9 @@ def batch(payload: BatchAction):
 def stats():
     items = records()
     original_bytes = sum(item["size"] for item in items)
-    thumbnail_bytes = sum((THUMBS / item["thumbnail_name"]).stat().st_size for item in items
-                          if item.get("thumbnail_name") and (THUMBS / item["thumbnail_name"]).exists())
+    thumbnail_sizes = STORAGE.list_sizes("thumbnails")
+    thumbnail_bytes = sum(thumbnail_sizes.get(thumbnail_key(item["thumbnail_name"]), 0) for item in items
+                          if item.get("thumbnail_name"))
     return {"photos": len(items), "albums": len(list_albums(DATA)), "original_bytes": original_bytes,
             "thumbnail_bytes": thumbnail_bytes,
             "bandwidth_saved_percent": round((1 - thumbnail_bytes / original_bytes) * 100, 1) if original_bytes else 0,
@@ -592,7 +630,8 @@ def scan_near_duplicates(max_distance: int = 8):
         fingerprint = item.get("perceptual_hash")
         if not fingerprint:
             try:
-                fingerprint = image_difference_hash(OBJECTS / item["object_name"])
+                with STORAGE.local_file(original_key(item["object_name"])) as source:
+                    fingerprint = image_difference_hash(source)
                 update_fields(DATA, item["id"], {"perceptual_hash": fingerprint})
             except Exception:
                 continue
@@ -665,7 +704,7 @@ def scan_storage_integrity(job_id: str | None = None):
     issues: list[dict] = []
     verified_hashes = 0
     missing_thumbnails = 0
-    referenced_objects = {item["object_name"] for item in items}
+    referenced_objects = {original_key(item["object_name"]) for item in items}
 
     if job_id:
         update_integrity_job(DATA, job_id, datetime.now(timezone.utc).isoformat(),
@@ -674,29 +713,30 @@ def scan_storage_integrity(job_id: str | None = None):
         if job_id:
             update_integrity_job(DATA, job_id, datetime.now(timezone.utc).isoformat(),
                                  total=len(items), completed=index - 1, current_name=item["name"])
-        source = OBJECTS / item["object_name"]
-        if not source.is_file():
+        key = original_key(item["object_name"])
+        if not STORAGE.exists(key):
             issues.append({"photo_id": item["id"], "name": item["name"], "kind": "missing_original"})
             if job_id:
                 update_integrity_job(DATA, job_id, datetime.now(timezone.utc).isoformat(), completed=index)
             continue
         digest = hashlib.sha256()
-        with source.open("rb") as handle:
-            for block in iter(lambda: handle.read(1024 * 1024), b""):
-                digest.update(block)
+        with STORAGE.local_file(key) as source:
+            with source.open("rb") as handle:
+                for block in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(block)
         if digest.hexdigest() != item["sha256"]:
             issues.append({"photo_id": item["id"], "name": item["name"], "kind": "hash_mismatch"})
         else:
             verified_hashes += 1
         thumb_name = item.get("thumbnail_name")
-        if not thumb_name or not (THUMBS / thumb_name).is_file():
+        if not thumb_name or not STORAGE.exists(thumbnail_key(thumb_name)):
             missing_thumbnails += 1
             issues.append({"photo_id": item["id"], "name": item["name"], "kind": "missing_thumbnail"})
         if job_id:
             update_integrity_job(DATA, job_id, datetime.now(timezone.utc).isoformat(), completed=index)
 
-    orphan_objects = sorted(path.name for path in OBJECTS.iterdir()
-                            if path.is_file() and path.name not in referenced_objects)
+    orphan_objects = sorted(key.removeprefix("objects/") for key in STORAGE.list("objects")
+                            if key not in referenced_objects)
     issues.extend({"photo_id": None, "name": name, "kind": "orphan_object"}
                   for name in orphan_objects)
     blocking_issues = sum(issue["kind"] in {"missing_original", "hash_mismatch"} for issue in issues)
@@ -752,7 +792,7 @@ def repair_storage_integrity():
     by_id = {item["id"]: item for item in records()}
     regenerated_thumbnails = 0
     quarantined_objects = 0
-    quarantine = DATA / "quarantine" / datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    quarantine = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
     for issue in before["issues"]:
         if issue["kind"] == "missing_thumbnail" and issue["photo_id"] in by_id:
@@ -762,10 +802,9 @@ def repair_storage_integrity():
                              height=item.get("height"), captured_at=item.get("captured_at"))
                 regenerated_thumbnails += 1
         elif issue["kind"] == "orphan_object":
-            source = OBJECTS / issue["name"]
-            if source.is_file():
-                quarantine.mkdir(parents=True, exist_ok=True)
-                shutil.move(str(source), str(quarantine / source.name))
+            source_key = original_key(issue["name"])
+            if STORAGE.exists(source_key):
+                STORAGE.move(source_key, f"quarantine/{quarantine}/{issue['name']}")
                 quarantined_objects += 1
 
     after = scan_storage_integrity()
@@ -831,7 +870,7 @@ def shared_photo(token: str):
 def shared_content(token: str):
     item = shared_photo(token)
     increment_share_views(DATA, item["id"])
-    return FileResponse(OBJECTS / item["object_name"], media_type=item["content_type"])
+    return media_response(original_key(item["object_name"]), item["content_type"])
 
 @app.delete("/api/photos/{photo_id}")
 def permanent_delete(photo_id: str):
@@ -839,7 +878,9 @@ def permanent_delete(photo_id: str):
     if not item or not item.get("trashed"): raise HTTPException(409, "Photo must be in trash")
     delete_photo(DATA, photo_id)
     if not any(x["object_name"] == item["object_name"] and x["id"] != photo_id for x in records()):
-        (OBJECTS / item["object_name"]).unlink(missing_ok=True)
+        STORAGE.delete(original_key(item["object_name"]))
+        if item.get("thumbnail_name"):
+            STORAGE.delete(thumbnail_key(item["thumbnail_name"]))
     return {"deleted": True}
 
 
@@ -848,18 +889,18 @@ def content(photo_id: str):
     item = next((x for x in records() if x["id"] == photo_id), None)
     if not item:
         raise HTTPException(404, "Photo not found")
-    return FileResponse(OBJECTS / item["object_name"], media_type=item["content_type"])
+    return media_response(original_key(item["object_name"]), item["content_type"])
 
 @app.get("/api/photos/{photo_id}/thumbnail")
 def thumbnail(photo_id: str):
     item = next((x for x in records() if x["id"] == photo_id), None)
     if not item: raise HTTPException(404, "Photo not found")
-    if not item.get("thumbnail_name") or not (THUMBS / item["thumbnail_name"]).exists():
+    if not item.get("thumbnail_name") or not STORAGE.exists(thumbnail_key(item["thumbnail_name"])):
         item = enrich_image(item)
         item = update_photo(photo_id, thumbnail_name=item.get("thumbnail_name"), width=item.get("width"), height=item.get("height"), captured_at=item.get("captured_at"))
     if item.get("thumbnail_name"):
-        return FileResponse(THUMBS / item["thumbnail_name"], media_type="image/webp")
-    return FileResponse(OBJECTS / item["object_name"], media_type=item["content_type"])
+        return media_response(thumbnail_key(item["thumbnail_name"]), "image/webp")
+    return media_response(original_key(item["object_name"]), item["content_type"])
 
 
 @app.post("/api/uploads/init")
@@ -914,7 +955,9 @@ def complete(upload_id: str, background_tasks: BackgroundTasks, filename: str = 
     if not parts:
         raise HTTPException(400, "No chunks uploaded")
     object_name = f"{sha256}{Path(filename).suffix.lower()}"
-    target = OBJECTS / object_name
+    temporary = tempfile.NamedTemporaryFile(prefix="pixelvault-upload-", dir=DATA, delete=False)
+    target = Path(temporary.name)
+    temporary.close()
     digest = hashlib.sha256()
     with target.open("wb") as out:
         for part in parts:
@@ -929,7 +972,17 @@ def complete(upload_id: str, background_tasks: BackgroundTasks, filename: str = 
             "trashed": False, "share_token": None, "thumbnail_name": None, "width": None,
             "height": None, "captured_at": None, "share_expires_at": None, "share_views": 0,
             "caption": ""}
-    items = records(); items.insert(0, item); save(items)
+    key = original_key(object_name)
+    existed = STORAGE.exists(key)
+    try:
+        STORAGE.put_file(key, target, content_type)
+        items = records(); items.insert(0, item); save(items)
+    except Exception:
+        if not existed:
+            STORAGE.delete(key)
+        raise
+    finally:
+        target.unlink(missing_ok=True)
     job, created = queue_photo_processing(DATA, item["id"], datetime.now(timezone.utc).isoformat())
     if created:
         background_tasks.add_task(run_photo_processing, item["id"])

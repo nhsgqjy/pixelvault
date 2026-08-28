@@ -55,6 +55,12 @@ the password value or place it in `render.yaml`:
 | `PIXELVAULT_ENV` | `production` |
 | `DATA_DIR` | `/app/data` |
 | `DATABASE_URL` | Render Postgres internal connection string |
+| `STORAGE_BACKEND` | `s3` for hosted deployments; omit locally |
+| `S3_ENDPOINT_URL` | S3-compatible endpoint, such as the Cloudflare R2 endpoint |
+| `S3_BUCKET` | Private media bucket name |
+| `S3_ACCESS_KEY_ID` | Object-storage access key ID |
+| `S3_SECRET_ACCESS_KEY` | Object-storage secret; never commit it |
+| `S3_REGION` | `auto` for Cloudflare R2 |
 
 Render supplies `PORT` at runtime. The container uses that value automatically
 and falls back to port 8000 for local Compose deployments. Render terminates
@@ -81,12 +87,22 @@ DATABASE_URL="postgresql://..." python tools/migrate_sqlite_to_postgres.py --app
 The target must be empty. The apply step refuses a populated database and
 verifies every table row count after copying. Never commit `DATABASE_URL`.
 
-The Free web-service filesystem remains ephemeral. PostgreSQL now protects
-business metadata across web-service redeploys, but originals and thumbnails
-can still disappear until object storage is enabled. Export a portable backup
-before switching `DATABASE_URL`, then verify representative records after the
-deployment. Do not claim end-to-end durability until the object-storage stage
-is complete.
+With `STORAGE_BACKEND=s3`, originals and thumbnails are stored under the
+`objects/` and `thumbnails/` prefixes. Upload chunks remain temporary and are
+deleted after assembly. Local development defaults to the same interface backed
+by `DATA_DIR`, so tests do not require cloud credentials.
+
+To seed a new bucket from a local media directory, preview first and apply only
+after checking the file count:
+
+```bash
+python tools/migrate_files_to_object_storage.py --source data
+python tools/migrate_files_to_object_storage.py --source data --apply
+```
+
+The apply run requires the `S3_*` variables, uploads only originals and
+thumbnails, and verifies every object's size. Never commit credentials or print
+them in deployment evidence.
 
 ## LAN and HTTPS
 
