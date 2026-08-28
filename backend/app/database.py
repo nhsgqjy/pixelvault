@@ -72,7 +72,12 @@ class Connection:
         return self.raw.execute(_postgres_sql(sql) if self.postgres else sql, params)
 
     def executemany(self, sql: str, params):
-        return self.raw.executemany(_postgres_sql(sql) if self.postgres else sql, params)
+        converted = _postgres_sql(sql) if self.postgres else sql
+        if self.postgres:
+            cursor = self.raw.cursor()
+            cursor.executemany(converted, params)
+            return cursor
+        return self.raw.executemany(converted, params)
 
     def executescript(self, sql: str):
         if self.postgres:

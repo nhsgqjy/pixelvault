@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from app.database import _postgres_sql, backend_name
+from app.database import Connection, _postgres_sql, backend_name
 from app.db import (api_metrics, create_upload, get_upload_by_hash, initialize,
                     recent_api_events, record_api_event)
 
@@ -85,6 +85,36 @@ class DatabaseCompatibilityTest(unittest.TestCase):
             self.assertEqual(saved["id"], "new")
             self.assertEqual(saved["filename"], "new.jpg")
             self.assertEqual(saved["size"], 20)
+
+    def test_postgres_executemany_uses_a_cursor(self):
+        class FakeCursor:
+            def __init__(self):
+                self.call = None
+
+            def executemany(self, sql, params):
+                self.call = (sql, params)
+
+        class FakePostgresConnection:
+            def __init__(self):
+                self.created_cursor = FakeCursor()
+
+            def cursor(self):
+                return self.created_cursor
+
+        connection = Connection(Path("unused"))
+        connection.postgres = True
+        connection.raw = FakePostgresConnection()
+        rows = [("album", "photo", "now")]
+        cursor = connection.executemany(
+            "INSERT OR IGNORE INTO album_photos(album_id,photo_id,added_at) VALUES(?,?,?)",
+            rows,
+        )
+        self.assertIs(cursor, connection.raw.created_cursor)
+        self.assertEqual(cursor.call, (
+            "INSERT INTO album_photos(album_id,photo_id,added_at) VALUES(%s,%s,%s) "
+            "ON CONFLICT DO NOTHING",
+            rows,
+        ))
 
 
 if __name__ == "__main__":

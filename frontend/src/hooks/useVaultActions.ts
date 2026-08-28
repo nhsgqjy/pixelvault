@@ -40,8 +40,12 @@ export function useVaultActions(options: Options) {
   }
 
   async function batch(actionName: string, albumId?: string, capturedAt?: string | null) {
-    await api.patch('/photos/batch', {json: {photo_ids: checked, action: actionName, album_id: albumId, captured_at: capturedAt}});
-    setNotice(`${checked.length} photos updated`); setChecked([]); await load(); await loadAlbums();
+    try {
+      await api.patch('/photos/batch', {json: {photo_ids: checked, action: actionName, album_id: albumId, captured_at: capturedAt}});
+      setNotice(`${checked.length} photos updated`); setChecked([]); await load(); await loadAlbums();
+    } catch (error) {
+      setNotice(error instanceof Error ? `Update failed · ${error.message}` : 'Update failed');
+    }
   }
   async function batchCaptureDate() {const value = prompt('Set capture time (YYYY-MM-DD HH:MM). Leave blank to clear.', '2026-01-01 12:00'); if (value !== null) await batch('set_captured_at', undefined, value.trim() ? value.trim().replace(' ', 'T') : null);}
   async function createNewAlbum() {const name = prompt('Name your new album'); if (!name) return; const response = await api.raw('/albums', {method: 'POST', json: {name}}); if (response.ok) {setNotice('Album created'); await loadAlbums();}}
