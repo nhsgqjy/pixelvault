@@ -480,7 +480,10 @@ def get_upload_by_hash(data_dir: Path, sha256: str):
 def create_upload(data_dir: Path, item: dict):
     with connect(data_dir) as db:
         db.execute("""INSERT INTO upload_sessions(id,filename,sha256,size,content_type,created_at)
-            VALUES(:id,:filename,:sha256,:size,:content_type,:created_at)""", item)
+            VALUES(?,?,?,?,?,?)""", (
+                item["id"], item["filename"], item["sha256"], item["size"],
+                item["content_type"], item["created_at"],
+            ))
 
 
 def delete_upload(data_dir: Path, upload_id: str):

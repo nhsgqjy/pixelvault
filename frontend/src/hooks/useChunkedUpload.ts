@@ -8,6 +8,7 @@ export function useChunkedUpload(onComplete: () => void | Promise<void>) {
   const [progress, setProgress] = useState<Record<string, number>>({});
   const [uploadState, setUploadState] = useState<Record<string, UploadStatus>>({});
   const [speeds, setSpeeds] = useState<Record<string, string>>({});
+  const [uploadErrors, setUploadErrors] = useState<Record<string, string>>({});
   const paused = useRef<Record<string, boolean>>({});
 
   async function upload(file: File) {
@@ -16,6 +17,7 @@ export function useChunkedUpload(onComplete: () => void | Promise<void>) {
     paused.current[file.name] = false;
     setProgress(current => ({...current, [file.name]: 2}));
     setUploadState(current => ({...current, [file.name]: 'uploading'}));
+    setUploadErrors(current => ({...current, [file.name]: ''}));
     try {
       const init = await api.post<{instant: boolean; upload_id: string; chunk_size: number; uploaded_chunks?: number[]}>('/uploads/init', {query: {filename: file.name, sha256: hash, size: file.size, content_type: file.type}});
       if (init.instant) {
@@ -41,8 +43,7 @@ export function useChunkedUpload(onComplete: () => void | Promise<void>) {
           form.append('chunk', file.slice(index * chunkSize, Math.min((index + 1) * chunkSize, file.size)));
           for (let attempt = 1; attempt <= 3; attempt++) {
             try {
-              const response = await api.raw(`/uploads/${init.upload_id}/chunks/${index}`, {method: 'PUT', body: form});
-              if (!response.ok) throw new Error(`Chunk ${index} failed`);
+              await api.put(`/uploads/${init.upload_id}/chunks/${index}`, {body: form});
               break;
             } catch (error) {
               if (attempt === 3) throw error;
@@ -62,13 +63,16 @@ export function useChunkedUpload(onComplete: () => void | Promise<void>) {
       form.append('filename', file.name);
       form.append('sha256', hash);
       form.append('content_type', file.type || 'application/octet-stream');
-      const response = await api.raw(`/uploads/${init.upload_id}/complete`, {method: 'POST', body: form});
-      if (!response.ok) throw new Error('Upload completion failed');
+      await api.post(`/uploads/${init.upload_id}/complete`, {body: form});
       setProgress(current => ({...current, [file.name]: 100}));
       setUploadState(current => ({...current, [file.name]: 'complete'}));
       await onComplete();
-    } catch {
+    } catch (error) {
       setUploadState(current => ({...current, [file.name]: 'failed'}));
+      setUploadErrors(current => ({
+        ...current,
+        [file.name]: error instanceof Error ? error.message : 'Upload failed',
+      }));
     }
   }
 
@@ -82,5 +86,5 @@ export function useChunkedUpload(onComplete: () => void | Promise<void>) {
     [...files].filter(file => file.type.startsWith('image/')).forEach(file => void upload(file));
   }
 
-  return {progress, uploadState, speeds, accept, toggleUpload};
+  return {progress, uploadState, speeds, uploadErrors, accept, toggleUpload};
 }

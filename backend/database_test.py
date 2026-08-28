@@ -22,6 +22,17 @@ class DatabaseCompatibilityTest(unittest.TestCase):
         self.assertIn("p.id=%s", converted)
         self.assertIn("p.sort_id DESC", converted)
 
+    def test_converts_upload_session_positional_parameters(self):
+        converted = _postgres_sql(
+            "INSERT INTO upload_sessions(id,filename,sha256,size,content_type,created_at) "
+            "VALUES(?,?,?,?,?,?)"
+        )
+        self.assertEqual(
+            converted,
+            "INSERT INTO upload_sessions(id,filename,sha256,size,content_type,created_at) "
+            "VALUES(%s,%s,%s,%s,%s,%s)",
+        )
+
     def test_converts_sqlite_insert_ignore(self):
         converted = _postgres_sql("INSERT OR IGNORE INTO tags(name) VALUES(?)")
         self.assertEqual(converted, "INSERT INTO tags(name) VALUES(%s) ON CONFLICT DO NOTHING")
