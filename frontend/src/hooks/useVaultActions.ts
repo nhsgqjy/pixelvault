@@ -50,12 +50,15 @@ export function useVaultActions(options: Options) {
     try {
       await api.patch('/photos/batch', {json: {photo_ids: checked, action: actionName, album_id: albumId, captured_at: capturedAt}});
       setNotice(`${checked.length} photos updated`); setChecked([]); await load(); await loadAlbums();
+      return true;
     } catch (error) {
       setNotice(error instanceof Error ? `Update failed · ${error.message}` : 'Update failed');
+      return false;
     }
   }
   async function batchCaptureDate() {const value = prompt('Set capture time (YYYY-MM-DD HH:MM). Leave blank to clear.', '2026-01-01 12:00'); if (value !== null) await batch('set_captured_at', undefined, value.trim() ? value.trim().replace(' ', 'T') : null);}
-  async function createNewAlbum() {const name = prompt('Name your new album'); if (!name) return; const response = await api.raw('/albums', {method: 'POST', json: {name}}); if (response.ok) {setNotice('Album created'); await loadAlbums();}}
+  async function createAlbum(name: string) {try {const album = await api.post<Album>('/albums', {json: {name: name.trim()}}); setNotice('Album created'); await loadAlbums(); return album;} catch (error) {setNotice(error instanceof Error ? `Album could not be created · ${error.message}` : 'Album could not be created'); return null;}}
+  async function createNewAlbum() {const name = prompt('Name your new album')?.trim(); if (name) await createAlbum(name);}
   async function renameCurrent(album: Album) {const name = prompt('Rename album', album.name)?.trim(); if (!name || name === album.name) return; const response = await api.raw(`/albums/${album.id}`, {method: 'PATCH', json: {name}}); if (response.ok) {const updated = await response.json(); setActiveAlbum(current => current?.id === album.id ? {...current, name: updated.name} : current); setNotice('Album renamed'); await loadAlbums();} else setNotice('That album name is already in use');}
   async function editAlbumDescription(album: Album) {const description = prompt('Album description', album.description || ''); if (description === null) return; const updated = await api.patch<Partial<Album>>(`/albums/${album.id}/presentation`, {json: {description, cover_photo_id: album.cover_photo_id || null}}); setActiveAlbum(current => current?.id === album.id ? {...current, ...updated} : current); setNotice('Album description saved'); await loadAlbums();}
   async function setAlbumCover(photoId: string) {if (!activeAlbum) return; const updated = await api.patch<Partial<Album>>(`/albums/${activeAlbum.id}/presentation`, {json: {description: activeAlbum.description || '', cover_photo_id: photoId}}); setActiveAlbum(current => current ? {...current, ...updated} : current); setNotice('Album cover updated'); await loadAlbums();}
@@ -68,5 +71,5 @@ export function useVaultActions(options: Options) {
   async function shareAlbum(album: Album) {if (album.share_token) {await navigator.clipboard?.writeText(`${location.origin}/album-share/${album.share_token}`); setNotice(`Album link copied · ${album.share_views || 0} visits`); return;} const result = await api.post<{token:string;expires_at:string;url:string}>(`/albums/${album.id}/share`, {query: {expires_hours: 24}}); setActiveAlbum(current => current?.id === album.id ? {...current, share_token: result.token, share_expires_at: result.expires_at, share_views: 0} : current); await navigator.clipboard?.writeText(`${location.origin}${result.url}`); setNotice('Album link copied · expires in 1 day'); await loadAlbums();}
   async function revokeAlbumShare(album: Album) {if (!confirm('Revoke this public album link?')) return; await api.delete(`/albums/${album.id}/share`); setActiveAlbum(current => current?.id === album.id ? {...current, share_token: null, share_expires_at: null} : current); setNotice('Album link revoked'); await loadAlbums();}
 
-  return {performAction, action, batch, batchCaptureDate, createNewAlbum, renameCurrent, editAlbumDescription, setAlbumCover, removeFromCurrentAlbum, retryProcessing, deleteCurrent, exportSelection, exportAlbum, shareAlbum, revokeAlbumShare};
+  return {performAction, action, batch, batchCaptureDate, createAlbum, createNewAlbum, renameCurrent, editAlbumDescription, setAlbumCover, removeFromCurrentAlbum, retryProcessing, deleteCurrent, exportSelection, exportAlbum, shareAlbum, revokeAlbumShare};
 }
