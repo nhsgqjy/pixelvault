@@ -33,6 +33,15 @@ class DatabaseCompatibilityTest(unittest.TestCase):
             "VALUES(%s,%s,%s,%s,%s,%s)",
         )
 
+    def test_converts_sqlite_named_parameters_for_psycopg(self):
+        converted = _postgres_sql(
+            "INSERT INTO photos(id,name,sha256) VALUES(:id,:name,:sha256)"
+        )
+        self.assertEqual(
+            converted,
+            "INSERT INTO photos(id,name,sha256) VALUES(%(id)s,%(name)s,%(sha256)s)",
+        )
+
     def test_converts_sqlite_insert_ignore(self):
         converted = _postgres_sql("INSERT OR IGNORE INTO tags(name) VALUES(?)")
         self.assertEqual(converted, "INSERT INTO tags(name) VALUES(%s) ON CONFLICT DO NOTHING")

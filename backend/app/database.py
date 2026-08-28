@@ -28,6 +28,10 @@ def _postgres_sql(sql: str) -> str:
     sql = sql.replace("GROUP_CONCAT(t.name, char(31))", "STRING_AGG(t.name, CHR(31))")
     sql = sql.replace("p.rowid", "p.sort_id")
     sql = sql.replace(" COLLATE NOCASE", "")
+    # SQLite accepts ``:name`` parameters while psycopg expects
+    # ``%(name)s`` for a mapping. Keep this in the compatibility layer so
+    # existing repository queries work with either database backend.
+    sql = re.sub(r"(?<!:):([A-Za-z_][A-Za-z0-9_]*)", r"%(\1)s", sql)
     sql = sql.replace("?", "%s")
     if insert_ignore:
         sql = f"{sql.rstrip().rstrip(';')} ON CONFLICT DO NOTHING"
@@ -78,4 +82,3 @@ class Connection:
 
 def connect(data_dir: Path) -> Connection:
     return Connection(data_dir)
-
