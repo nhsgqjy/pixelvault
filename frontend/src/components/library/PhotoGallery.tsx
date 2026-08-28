@@ -17,7 +17,7 @@ export function PhotoGallery({photos, checked, view, inAlbum, onOpen, onToggle, 
       : photo.processing_status === 'queued' || photo.processing_status === 'running' ? <div className="processing-placeholder"><Sparkles/><b>{photo.processing_status === 'queued' ? 'Waiting to process' : 'Creating preview'}</b><small>Extracting dimensions and photo metadata…</small></div>
       : <img src={api.url(`/photos/${photo.id}/thumbnail`)} alt={photo.caption || photo.name} role="button" tabIndex={0} onClick={() => onOpen(photo)} onKeyDown={event => {if (event.key === 'Enter') onOpen(photo);}}/>}
       <button className="picker" aria-label={`Select ${photo.name}`} onClick={() => onToggle(photo.id)}>{checked.includes(photo.id) ? <Check/> : null}</button>
-      <div className="actions">{view === 'trash' ? <><button onClick={() => onAction(photo.id, 'restore')}>Restore</button><button onClick={() => onAction(photo.id, 'delete')}>Delete</button></>
+      <div className="actions">{view === 'trash' ? <><button className="text-action" onClick={() => onAction(photo.id, 'restore')}>Restore</button><button className="text-action" onClick={() => onAction(photo.id, 'delete')}>Delete</button></>
         : view === 'shared' ? <button onClick={() => onAction(photo.id, 'unshare')}>Revoke</button>
         : <><button aria-label={`${photo.favorite ? 'Remove from' : 'Add to'} favorites`} className={photo.favorite ? 'selected' : ''} onClick={() => onAction(photo.id, 'favorite')}><Heart/></button>
           {!inAlbum && <button aria-label={`Share ${photo.name}`} onClick={() => onAction(photo.id, 'share')}><Share2/></button>}

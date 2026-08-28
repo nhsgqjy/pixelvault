@@ -21,16 +21,14 @@ export function useVaultActions(options: Options) {
     try {
       let suffix = '';
       if (kind === 'share') {
-        const raw = prompt('Share link duration in days', '7');
-        if (raw === null) return false;
-        suffix = `?expires_hours=${Math.min(365, Math.max(1, Number(raw) || 7)) * 24}`;
+        suffix = '?expires_hours=24';
       }
       const path = (kind === 'unshare' ? `/photos/${id}/share` : `/photos/${id}${kind === 'delete' ? '' : `/${kind}`}`) + suffix;
       const method = kind === 'share' ? 'POST' : kind === 'unshare' || kind === 'delete' ? 'DELETE' : 'PATCH';
       const result = await api.request<{url?: string}>(path, {method});
       if (kind === 'share' && result.url) {
         await navigator.clipboard?.writeText(`${location.origin}${result.url}`);
-        setNotice('Expiring share link copied');
+        setNotice('Share link copied · expires in 1 day');
       } else if (kind === 'trash') setNotice('Moved to Trash · original kept');
       else if (kind === 'restore') setNotice('Photo restored');
       else if (kind === 'delete') setNotice('Photo permanently deleted');
@@ -67,7 +65,7 @@ export function useVaultActions(options: Options) {
   async function saveDownload(response: Response, filename: string) {if (!response.ok) {setNotice('Export could not be created'); return;} const url = URL.createObjectURL(await response.blob()); const link = document.createElement('a'); link.href = url; link.download = filename; link.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);}
   async function exportSelection() {await saveDownload(await api.raw('/photos/export', {method: 'POST', json: {photo_ids: checked}}), 'pixelvault-selection.zip'); setNotice(`${checked.length} originals exported`);}
   async function exportAlbum(album: Album) {await saveDownload(await api.raw(`/albums/${album.id}/export`), `${album.name}.zip`); setNotice('Album export ready');}
-  async function shareAlbum(album: Album) {if (album.share_token) {await navigator.clipboard?.writeText(`${location.origin}/album-share/${album.share_token}`); setNotice(`Album link copied · ${album.share_views || 0} visits`); return;} const raw = prompt('Share album for how many days?', '7'); if (raw === null) return; const days = Math.min(365, Math.max(1, Number(raw) || 7)); const result = await api.post<{token:string;expires_at:string;url:string}>(`/albums/${album.id}/share`, {query: {expires_hours: days * 24}}); setActiveAlbum(current => current?.id === album.id ? {...current, share_token: result.token, share_expires_at: result.expires_at, share_views: 0} : current); await navigator.clipboard?.writeText(`${location.origin}${result.url}`); setNotice('Expiring album link copied'); await loadAlbums();}
+  async function shareAlbum(album: Album) {if (album.share_token) {await navigator.clipboard?.writeText(`${location.origin}/album-share/${album.share_token}`); setNotice(`Album link copied · ${album.share_views || 0} visits`); return;} const result = await api.post<{token:string;expires_at:string;url:string}>(`/albums/${album.id}/share`, {query: {expires_hours: 24}}); setActiveAlbum(current => current?.id === album.id ? {...current, share_token: result.token, share_expires_at: result.expires_at, share_views: 0} : current); await navigator.clipboard?.writeText(`${location.origin}${result.url}`); setNotice('Album link copied · expires in 1 day'); await loadAlbums();}
   async function revokeAlbumShare(album: Album) {if (!confirm('Revoke this public album link?')) return; await api.delete(`/albums/${album.id}/share`); setActiveAlbum(current => current?.id === album.id ? {...current, share_token: null, share_expires_at: null} : current); setNotice('Album link revoked'); await loadAlbums();}
 
   return {performAction, action, batch, batchCaptureDate, createNewAlbum, renameCurrent, editAlbumDescription, setAlbumCover, removeFromCurrentAlbum, retryProcessing, deleteCurrent, exportSelection, exportAlbum, shareAlbum, revokeAlbumShare};
