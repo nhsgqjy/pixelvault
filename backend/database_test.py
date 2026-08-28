@@ -1,11 +1,13 @@
 import os
 import sys
 import unittest
+from tempfile import TemporaryDirectory
 from pathlib import Path
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from app.database import _postgres_sql, backend_name
+from app.db import api_metrics, initialize, recent_api_events, record_api_event
 
 
 class DatabaseCompatibilityTest(unittest.TestCase):
@@ -58,6 +60,15 @@ class DatabaseCompatibilityTest(unittest.TestCase):
             converted,
             "INSERT INTO api_events(method,path) VALUES(%s,%s) RETURNING id",
         )
+
+    def test_metrics_use_rounding_sql_supported_by_both_databases(self):
+        with TemporaryDirectory() as directory:
+            data_dir = Path(directory)
+            initialize(data_dir, data_dir / "photos.json")
+            record_api_event(data_dir, "POST", "/api/test", 201, 12.36,
+                             "2026-08-28T00:00:00+00:00")
+            self.assertEqual(api_metrics(data_dir)["average_ms"], 12.4)
+            self.assertEqual(recent_api_events(data_dir)[0]["duration_ms"], 12.4)
 
 
 if __name__ == "__main__":

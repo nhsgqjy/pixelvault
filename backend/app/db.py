@@ -554,13 +554,15 @@ def record_api_event(data_dir: Path, method: str, path: str, status: int, durati
 
 def recent_api_events(data_dir: Path, limit: int = 20):
     with connect(data_dir) as db:
-        return [dict(row) for row in db.execute("""SELECT method,path,status,ROUND(duration_ms,1) AS duration_ms,created_at
+        return [dict(row) for row in db.execute("""SELECT method,path,status,
+            CAST(ROUND(CAST(duration_ms AS NUMERIC),1) AS DOUBLE PRECISION) AS duration_ms,created_at
             FROM api_events WHERE method != 'GET' ORDER BY created_at DESC LIMIT ?""", (limit,))]
 
 
 def api_metrics(data_dir: Path):
     with connect(data_dir) as db:
-        row = db.execute("""SELECT COUNT(*) AS request_count, ROUND(AVG(duration_ms),1) AS average_ms,
+        row = db.execute("""SELECT COUNT(*) AS request_count,
+            CAST(ROUND(CAST(AVG(duration_ms) AS NUMERIC),1) AS DOUBLE PRECISION) AS average_ms,
             SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END) AS error_count FROM api_events""").fetchone()
         return dict(row)
 
