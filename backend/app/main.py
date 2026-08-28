@@ -517,14 +517,15 @@ def import_vault_backup(backup: UploadFile = File(...)):
             raise HTTPException(422, "Unsupported backup format")
         existing = {item["sha256"]: item for item in records()}
         id_map: dict[str, str] = {}
-        imported = duplicates = 0
+        imported = duplicates = restored_objects = 0
         for source_item in manifest.get("photos", []):
             sha = source_item.get("sha256", "")
             path = PurePosixPath(source_item.get("archive_path", ""))
             if len(sha) != 64 or not path.parts or path.parts[0] != "objects" or ".." in path.parts or path.is_absolute():
                 raise HTTPException(422, "Backup contains an unsafe photo entry")
-            if sha in existing:
-                id_map[source_item["id"]] = existing[sha]["id"]
+            existing_item = existing.get(sha)
+            if existing_item and STORAGE.exists(original_key(existing_item["object_name"])):
+                id_map[source_item["id"]] = existing_item["id"]
                 duplicates += 1
                 continue
             try:
@@ -532,7 +533,7 @@ def import_vault_backup(backup: UploadFile = File(...)):
             except KeyError as error:
                 raise HTTPException(422, f"Backup photo is missing: {source_item.get('name', 'unknown')}") from error
             suffix = Path(source_item.get("name", "")).suffix.lower()
-            object_name = f"{sha}{suffix}"
+            object_name = existing_item["object_name"] if existing_item else f"{sha}{suffix}"
             temporary = tempfile.NamedTemporaryFile(prefix="pixelvault-import-", dir=DATA, delete=False)
             digest = hashlib.sha256()
             with source, temporary:
@@ -549,6 +550,11 @@ def import_vault_backup(backup: UploadFile = File(...)):
                 STORAGE.put_file(object_key, temporary_path, content_type)
             finally:
                 temporary_path.unlink(missing_ok=True)
+            if existing_item:
+                id_map[source_item["id"]] = existing_item["id"]
+                duplicates += 1
+                restored_objects += 1
+                continue
             new_id = uuid.uuid4().hex
             item = {"id": new_id, "name": Path(source_item.get("name", "photo")).name, "sha256": sha,
                     "object_name": object_name, "content_type": content_type,
@@ -583,7 +589,8 @@ def import_vault_backup(backup: UploadFile = File(...)):
                 update_album_presentation(DATA, album["id"], str(source_album.get("description") or "")[:500],
                                           restored_cover if restored_cover in member_ids else None)
     return {"imported_photos": imported, "duplicate_photos": duplicates,
-            "created_albums": restored_albums, "mode": "merge", "deleted_existing": 0}
+            "restored_missing_objects": restored_objects, "created_albums": restored_albums,
+            "mode": "merge", "deleted_existing": 0}
 
 
 @app.patch("/api/photos/batch")

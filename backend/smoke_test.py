@@ -208,9 +208,15 @@ with zipfile.ZipFile(io.BytesIO(backup_bytes)) as backup_archive:
     assert backup_manifest["format"] == "pixelvault-backup" and backup_manifest["version"] == 1
     assert len(backup_manifest["photos"]) == stats["photos"]
     assert all(item["archive_path"] in backup_archive.namelist() for item in backup_manifest["photos"])
+missing_object = None
+if photos:
+    missing_object = Path("data/objects") / photos[0]["object_name"]
+    missing_object.unlink()
 merge_result = import_backup(backup_bytes)
 assert merge_result["imported_photos"] == 0
 assert merge_result["duplicate_photos"] == stats["photos"] and merge_result["deleted_existing"] == 0
+assert merge_result["restored_missing_objects"] == (1 if photos else 0)
+assert missing_object is None or missing_object.is_file()
 resume_hash = "a" * 64
 resume_path = f"/uploads/init?filename=resume-test.jpg&sha256={resume_hash}&size=2097152&content_type=image/jpeg"
 session = call(resume_path, "POST")
